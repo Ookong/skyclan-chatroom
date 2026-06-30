@@ -1,0 +1,19 @@
+# wrangler.toml - SkyClan Chatroom Backend (v1.2)
+#
+# ⚠️ This is REFERENCE config only. The actual deployment is done by IcePaw
+# by merging these routes into the existing tpg-hq Worker.
+#
+# The chatroom code uses `env.TPG_KV` (the existing TPG KV namespace),
+# NOT separate namespaces.
+
+name = "tpg-hq"
+main = "src/worker.js"
+compatibility_date = "2024-12-01"
+
+# Use existing TPG_KV namespace (IcePaw fills in the real ID)
+[[kv_namespaces]]
+binding = "TPG_KV"
+id = "REPLACE_WITH_TPG_KV_NAMESPACE_ID"
+
+# Routes are on the existing tpg-hq domain
+# No new routes needed - the /chat/* paths are handled by the same Worker
