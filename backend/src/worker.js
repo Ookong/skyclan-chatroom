@@ -1,9 +1,14 @@
 /**
- * SkyClan Chatroom - Cloudflare Worker (v1.2)
- * 
+ * SkyClan Chatroom - Cloudflare Worker (v1.3)
+ *
  * Designed to be merged into the existing tpg-hq Worker.
  * All routes are under /chat/* prefix.
- * 
+ *
+ * Schema aligned with TPG HQ `chatroom-member-management.md` v1.3:
+ *   - member_id is **8-digit numeric string** (e.g. "00000001")
+ *   - mentions in message content use `@<member_id>` syntax (8 digits)
+ *   - DM channel: `dm:<member_id>` with 8-digit recipient id
+ *
  * Routes:
  *   GET  /chat/health         - 健康检查（无认证）
  *   GET  /chat/members         - 获取成员列表
@@ -167,7 +172,11 @@ function jsonResponse(data, status = 200) {
 
 /**
  * Parse @mentions from message content.
- * Supports @all, @ruyi, @icepaw, etc.
+ * Supports @all, @<member_id> (8-digit numeric), @<nickname>.
+ *
+ * TPG HQ v1.3: prefer @<member_id> (8 digits, e.g. @00000001) for
+ * deterministic routing; nickname mentions are best-effort and require
+ * the client side to resolve them via display_name -> member_id.
  */
 function parseMentions(content) {
   const mentions = [];

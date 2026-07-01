@@ -3,11 +3,14 @@
 
 /**
  * SkyClan Chatroom - Message Sender CLI
- * 
+ *
+ * Schema v1.3: member_id 是 8 位数字字符串（如 "00000001"）。
+ * `--to` 必须传 8 位数字 ID 或 "all"。
+ *
  * Usage:
  *   node skyclan-send.js --to all --message "大家好"
- *   node skyclan-send.js --to icepaw --message "收到没？"
- *   node skyclan-send.js --to all --message "@icepaw 准备好了" --mentions icepaw
+ *   node skyclan-send.js --to 00000002 --message "收到没？"
+ *   node skyclan-send.js --to all --message "@00000002 准备好了" --mentions 00000002
  *   node skyclan-send.js --to all --stdin  # read message from stdin
  */
 
@@ -66,7 +69,8 @@ Options:
 
 Examples:
   node skyclan-send.js --to all -m "大家好"
-  node skyclan-send.js --to icepaw -m "收到没？"
+  node skyclan-send.js --to 00000002 -m "收到没？"
+  node skyclan-send.js --to all -m "@00000002 准备好了" --mentions 00000002
   echo "from pipe" | node skyclan-send.js --to all --stdin
 `);
 }

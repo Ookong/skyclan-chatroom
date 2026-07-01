@@ -1,4 +1,4 @@
-# wrangler.toml - SkyClan Chatroom Backend (v1.2)
+# wrangler.toml - SkyClan Chatroom Backend (v1.3)
 #
 # ⚠️ This is REFERENCE config only. The actual deployment is done by IcePaw
 # by merging these routes into the existing tpg-hq Worker.

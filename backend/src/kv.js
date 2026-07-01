@@ -1,8 +1,18 @@
 /**
- * SkyClan Chatroom - KV Storage Module (v1.2)
- * 
+ * SkyClan Chatroom - KV Storage Module (v1.3)
+ *
  * Uses existing TPG_KV namespace with `chatroom:` prefix.
- * 
+ *
+ * Schema aligned with TPG HQ `chatroom-member-management.md` v1.3:
+ *   - member_id is **8-digit numeric string** (zero-padded), e.g. "00000001"
+ *   - core fields: member_id / api_token / display_name / created_at / last_seen
+ *   - token reverse-index: chatroom:token:<api_token> -> member_id
+ *   - member list index : chatroom:index:members (JSON array of member_ids)
+ *
+ * Extra chatroom-only fields retained (not in TPG HQ base schema, but useful
+ * for chatroom-specific behaviour and not conflicting):
+ *   nickname, role, platform, device, status
+ *
  * Key patterns:
  *   chatroom:member:<member_id>     - member profile JSON
  *   chatroom:token:<api_token>      -> member_id (reverse lookup)
@@ -14,6 +24,17 @@
 
 const PREFIX = 'chatroom:';
 const TTL_7DAYS = 604800;
+
+// TPG HQ schema: member_id is exactly 8 ASCII digits (zero-padded).
+const MEMBER_ID_RE = /^\d{8}$/;
+
+function assertMemberId(memberId) {
+  if (!MEMBER_ID_RE.test(String(memberId))) {
+    throw new Error(
+      `invalid member_id "${memberId}": must be 8-digit numeric (e.g. "00000001") per TPG HQ schema v1.3`
+    );
+  }
+}
 
 // --- Messages ---
 
@@ -85,9 +106,15 @@ export async function getMessages(env, since, limit, member_id) {
 /**
  * Register a new member.
  * Creates member record + token index.
+ *
+ * member_id MUST be an 8-digit numeric string (TPG HQ schema v1.3).
+ * Throws if not.
  */
 export async function putMember(env, memberData) {
-  const { member_id, nickname, display_name, role, platform, device } = memberData;
+  const { nickname, display_name, role, platform, device } = memberData;
+  const member_id = memberData.member_id;
+
+  assertMemberId(member_id);
 
   const api_token = memberData.api_token || generateTokenHex();
 

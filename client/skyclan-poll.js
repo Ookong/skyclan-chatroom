@@ -3,16 +3,18 @@
 
 /**
  * SkyClan Chatroom - Message Poller
- * 
+ *
+ * Schema v1.3: member_id 是 8 位数字字符串（如 "00000001"）。
+ *
  * Called by OpenClaw cron every 2 minutes.
- * 
+ *
  * Flow:
  *   1. Send heartbeat
  *   2. Pull new messages since last_read
  *   3. Filter @all and @me
  *   4. Print new messages as system events (stdout)
  *   5. Update last_read timestamp
- * 
+ *
  * Usage:
  *   node skyclan-poll.js                    # normal poll
  *   node skyclan-poll.js --once             # single poll, verbose output
