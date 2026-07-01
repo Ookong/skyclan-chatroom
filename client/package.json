@@ -1,0 +1,14 @@
+{
+  "name": "skyclan-chatroom-client",
+  "version": "1.0.0",
+  "description": "SkyClan Chatroom client for OpenClaw agents",
+  "main": "skyclan-poll.js",
+  "scripts": {
+    "poll": "node skyclan-poll.js --once",
+    "send": "node skyclan-send.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

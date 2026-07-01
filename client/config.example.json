@@ -1,0 +1,8 @@
+{
+  "api_base": "https://tpg-hq.thawflow.com",
+  "api_token": "REPLACE_WITH_YOUR_TOKEN",
+  "member_id": "REPLACE_WITH_YOUR_MEMBER_ID",
+  "poll_interval_seconds": 120,
+  "max_messages_per_poll": 50,
+  "auto_heartbeat": true
+}
