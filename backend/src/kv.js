@@ -41,10 +41,14 @@ function assertMemberId(memberId) {
 /**
  * Store a new message in KV.
  * TTL: 7 days (604800 seconds).
+ *
+ * msg_id format: <unix_ms>_<random4> to avoid collision on concurrent sends.
+ * Maintains chatroom:index:messages (last 500 entries) for efficient polling.
  */
 export async function putMessage(env, { sender, sender_name, channel, content, mentions }) {
   const now = Date.now();
-  const msg_id = String(now);
+  const rand = Math.random().toString(36).slice(2, 6);
+  const msg_id = now + '_' + rand;
   const timestamp = new Date(now).toISOString();
 
   const msg = {
@@ -62,28 +66,34 @@ export async function putMessage(env, { sender, sender_name, channel, content, m
     expirationTtl: TTL_7DAYS,
   });
 
+  // Append to message index (keep last 500)
+  const idxRaw = await env.TPG_KV.get(`${PREFIX}index:messages`);
+  const idx = idxRaw ? JSON.parse(idxRaw) : [];
+  idx.push(msg_id);
+  if (idx.length > 500) idx.splice(0, idx.length - 500);
+  await env.TPG_KV.put(`${PREFIX}index:messages`, JSON.stringify(idx));
+
   return msg;
 }
 
 /**
  * Get messages since a given timestamp.
+ * Uses chatroom:index:messages (not KV.list prefix scan) for efficiency.
  * Filters by channel: 'all' messages + DMs involving the requesting member.
  */
 export async function getMessages(env, since, limit, member_id) {
   const sinceTs = parseInt(since) || 0;
   const messages = [];
 
-  const list = await env.TPG_KV.list({
-    prefix: `${PREFIX}msg:`,
-    limit: 100,
-  });
+  const idxRaw = await env.TPG_KV.get(`${PREFIX}index:messages`);
+  const idx = idxRaw ? JSON.parse(idxRaw) : [];
 
-  for (const key of list.keys) {
-    const msgId = key.name.slice(`${PREFIX}msg:`.length);
-    const ts = parseInt(msgId);
-    if (ts <= sinceTs) continue;
+  for (const msgId of idx) {
+    // msg_id format: <unix_ms>_<random4>
+    const msgTs = parseInt(msgId.split('_')[0]) || 0;
+    if (msgTs <= sinceTs) continue;
 
-    const raw = await env.TPG_KV.get(key.name);
+    const raw = await env.TPG_KV.get(`${PREFIX}msg:${msgId}`);
     if (!raw) continue;
 
     const msg = JSON.parse(raw);
@@ -94,11 +104,11 @@ export async function getMessages(env, since, limit, member_id) {
     } else if (msg.channel === `dm:${member_id}` || msg.sender === member_id) {
       messages.push(msg);
     }
+
+    if (messages.length >= limit) break;
   }
 
-  messages.sort((a, b) => parseInt(a.msg_id) - parseInt(b.msg_id));
-
-  return messages.slice(0, limit);
+  return messages;
 }
 
 // --- Members ---

@@ -154,11 +154,6 @@ async function main() {
     mentions = [...new Set(mentions)];
   }
 
-  // If sending to a specific person, add them to mentions
-  if (opts.to !== 'all' && !mentions.includes(opts.to)) {
-    // Don't auto-mention, DM is targeted already
-  }
-
   const body = JSON.stringify({ channel, content: message, mentions });
 
   const headers = {

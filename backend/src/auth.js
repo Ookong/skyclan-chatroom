@@ -56,14 +56,3 @@ export async function authenticate(request, env) {
     display_name: member.display_name || member.nickname,
   };
 }
-
-/**
- * Generate a random API token (32 bytes hex).
- */
-export function generateToken() {
-  const arr = new Uint8Array(32);
-  crypto.getRandomValues(arr);
-  return Array.from(arr)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}

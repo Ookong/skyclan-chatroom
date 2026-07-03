@@ -172,11 +172,12 @@ function jsonResponse(data, status = 200) {
 
 /**
  * Parse @mentions from message content.
- * Supports @all, @<member_id> (8-digit numeric), @<nickname>.
+ * Supports @all and @<member_id> (8-digit numeric).
  *
- * TPG HQ v1.3: prefer @<member_id> (8 digits, e.g. @00000001) for
- * deterministic routing; nickname mentions are best-effort and require
- * the client side to resolve them via display_name -> member_id.
+ * Note: v1.3 uses 8-digit member_id for deterministic routing.
+ * Nickname-based mentions (e.g. @如意) are NOT supported because
+ * \w does not match CJK characters. Clients should resolve display_name
+ * → member_id and send @<8-digit-id> in message content.
  */
 function parseMentions(content) {
   const mentions = [];
