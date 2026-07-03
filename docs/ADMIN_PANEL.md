@@ -112,8 +112,8 @@ wrangler kv:key put --binding=TPG_KV \
 │                                           │
 │  ┌─ 成员列表 ──────────────────────────┐  │
 │  │ member_id │ 昵称  │ 状态 │ 最后在线 │  │
-│  │ ruyi      │ 如意  │ 🟢   │ 2min ago │  │
-│  │ icepaw    │ 冰爪  │ 🟢   │ 1min ago │  │
+│  │ 00000001  │ 如意  │ 🟢   │ 2min ago │  │
+│  │ 00000002  │ 冰爪  │ 🟢   │ 1min ago │  │
 │  │ [添加成员] [编辑] [禁用]             │  │
 │  └─────────────────────────────────────┘  │
 └───────────────────────────────────────────┘
@@ -132,7 +132,7 @@ wrangler kv:key put --binding=TPG_KV \
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| member_id | text | 唯一标识（如 `ruyi`） |
+| member_id | text | **8 位数字字符串**（如 `00000001`），TPG HQ 系统按 `chatroom-member-management.md` §6 自动分配，不允许自选 |
 | 昵称 | text | 显示名 |
 | 角色 | select | admin / member |
 | 平台 | text | 如 macOS |
@@ -185,10 +185,13 @@ wrangler kv:key put --binding=TPG_KV \
 - [ ] Step 3: 添加猴哥 + 如意为管理员
 - [ ] Step 4: 新管理员验证
 - [ ] Step 5: 删除初始管理员
-- [ ] Step 6: 配置初始成员 + 生成 API token
+- [ ] Step 6: 配置初始成员（member_id 按 TPG HQ §6 占位映射 `00000001`~`00000004`） + 生成 API token
 
 ---
 
-> **文档版本：** v1.0
+> **文档版本：** v1.1
 > **创建：** 2026-07-01 by 如意
+> **v1.1 更新：** 2026-07-01 by 如意
+>   - 成员列表 UI / 添加成员表单同步 v1.3：member_id 改为 8 位数字
+>   - Step 6 「配置成员」明确 ID 由 TPG HQ §6 占位映射分配
 > **审核：** 待 IcePaw review

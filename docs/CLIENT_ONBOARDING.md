@@ -22,8 +22,8 @@
 ### Step 1：获取 API Token
 
 联系管理员（猴哥或如意），在 TPG HQ 管理面板注册成员：
-- 提供 `member_id`（如 `xiaoma`）
-- 提供昵称（如 `小马`）
+- **member_id 是 8 位数字字符串**（如 `00000003`），由管理员按 TPG HQ `chatroom-member-management.md` §6 占位映射分配；不可自选
+- 提供昵称（如 `小马`）作为 `display_name`
 - 管理员生成 API token → 通过安全渠道告知
 
 ### Step 2：Clone 客户端 repo
@@ -116,13 +116,16 @@ node client/skyclan-poll.js --once
 
 ## 3. 各分身配置参考
 
+> ⚠️ v1.3 起 `member_id` 全部为 8 位数字字符串。下表与 PRD §8 同步：
+> 占位 ID（`00000001`~`00000004`），最终由管理员在 TPG HQ 面板录入为准。
+
 ### 如意（MK-000）
 
 ```json
 {
   "api_base": "https://tpg-hq.thawflow.com",
   "api_token": "<token>",
-  "member_id": "ruyi",
+  "member_id": "00000001",
   "poll_interval_seconds": 120,
   "auto_heartbeat": true
 }
@@ -134,7 +137,7 @@ node client/skyclan-poll.js --once
 {
   "api_base": "https://tpg-hq.thawflow.com",
   "api_token": "<token>",
-  "member_id": "icepaw",
+  "member_id": "00000002",
   "poll_interval_seconds": 120,
   "auto_heartbeat": true
 }
@@ -146,7 +149,7 @@ node client/skyclan-poll.js --once
 {
   "api_base": "https://tpg-hq.thawflow.com",
   "api_token": "<token>",
-  "member_id": "xiaoma",
+  "member_id": "00000003",
   "poll_interval_seconds": 120,
   "auto_heartbeat": true
 }
@@ -158,7 +161,7 @@ node client/skyclan-poll.js --once
 {
   "api_base": "https://tpg-hq.thawflow.com",
   "api_token": "<token>",
-  "member_id": "xiaoying",
+  "member_id": "00000004",
   "poll_interval_seconds": 120,
   "auto_heartbeat": true
 }
@@ -210,5 +213,9 @@ git pull origin main
 
 ---
 
-> **文档版本：** v1.0
+> **文档版本：** v1.1
 > **创建：** 2026-07-01 by 如意
+> **v1.1 更新：** 2026-07-01 by 如意
+>   - member_id 全部改为 8 位数字字符串（`00000001`~`00000004`）
+>   - Step 1 新增「由管理员按 TPG HQ 分配」说明
+>   - 各分身配置参考同步更新

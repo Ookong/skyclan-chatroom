@@ -2,7 +2,7 @@
 
 SkyClan 家族聊天室后端，扩展 TPG HQ Cloudflare Worker。
 
-## 架构（v1.2）
+## 架构（v1.3）
 
 - **Worker：** 扩展现有 `tpg-hq` Worker，新增 `/chat/*` 路由
 - **KV：** 使用现有 `TPG_KV` namespace，key 加 `chatroom:` prefix
@@ -35,12 +35,18 @@ src/
 
 | Key | 用途 |
 |-----|------|
-| `chatroom:member:<id>` | 成员数据 |
+| `chatroom:member:<member_id>` | 成员数据（**member_id 为 8 位数字**） |
 | `chatroom:token:<token>` | Token → member_id 反查 |
 | `chatroom:index:members` | 成员 ID 列表 |
 | `chatroom:msg:<timestamp>` | 消息（7天TTL） |
-| `chatroom:admin:<id>` | 管理员数据 |
+| `chatroom:admin:<admin_id>` | 管理员数据 |
 | `chatroom:index:admins` | 管理员 ID 列表 |
+
+> **Schema 约定（v1.3，与 TPG HQ `chatroom-member-management.md` 对齐）：**
+>
+> `member_id` 必须是 8 位数字字符串（零填充），例如 `00000001`。
+> `putMember` 会对入参做正则 `/^\d{8}$/` 校验，不合规直接抛错。
+> 旧 string-ID（如 `ruyi`）已被废弃，仅作为 `nickname` / `display_name` 标签保留。
 
 ## API
 

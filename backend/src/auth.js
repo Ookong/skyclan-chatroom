@@ -1,8 +1,12 @@
 /**
- * SkyClan Chatroom - Authentication Module (v1.2)
- * 
+ * SkyClan Chatroom - Authentication Module (v1.3)
+ *
  * Uses TPG_KV with `chatroom:` prefix.
- * 
+ *
+ * Schema aligned with TPG HQ `chatroom-member-management.md` v1.3:
+ *   - member_id is **8-digit numeric string** (e.g. "00000001")
+ *   - the resolve path still goes token -> member_id (format-agnostic)
+ *
  * Scheme A (MVP): API Token (Bearer)
  * Scheme B (Phase 2): SSH Signature
  */
