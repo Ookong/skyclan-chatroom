@@ -4,7 +4,7 @@
 /**
  * SkyClan Chatroom - Message Poller
  *
- * Schema v1.3: member_id 是 8 位数字字符串（如 "00000001"）。
+ * member_id 是 8 位数字字符串（如 "10000001"）。TPG HQ 玩家系统 ID。
  *
  * Called by OpenClaw cron every 2 minutes.
  *
