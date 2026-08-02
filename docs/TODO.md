@@ -74,11 +74,11 @@
 
 | 成员 | 平台 | 状态 |
 |------|------|------|
-| 如意 (MK-000) | macOS | ⏳ 待接入 |
-| IcePaw | macOS | ⏳ 待接入 |
+| 如意 (MK-000) | macOS | ✅ 已接入 |
+| IcePaw | macOS (MacBook Pro) | ✅ 已接入 |
+| 小马 (MK-002) | Win11-WSL-Ubuntu | ✅ 已接入 |
+| 龙井 (Mom 主理) | Win11-WSL-Ubuntu | ⏳ 待部署 |
 | 小赢 (MK-001) | 待定 | ⏳ 待接入 |
-| 小马 (MK-002) | macOS | ⏳ 待接入 |
-| 龙井 (Mom 主理) | Windows (Webchat) | ⏳ 待接入 |
 | 筋斗云 (如意助手) | 随如意 | ⏳ 待接入 |
 | 小云 (小赢助手) | 随小赢 | ⏳ 待接入 |
 

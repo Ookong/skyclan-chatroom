@@ -16,11 +16,11 @@
 
 OpenClaw 分身分布在不同设备上：
 - **如意 (MK-000)** — MacBook (macOS, Darwin x86_64)
-- **IcePaw** — MacBook (macOS, Darwin x86_64)
-- **小马 (MK-002)** — Mac (另一台)
-- **小赢 (MK-001)** — Mac Mini
+- **IcePaw** — MacBook Pro (macOS, Darwin x86_64)
+- **小马 (MK-002)** — Win11-WSL-Ubuntu
+- **龙井** — Win11-WSL-Ubuntu（Mom 博文的 AI 分身）
 
-当前分身之间的通讯依赖 iMessage（仅限 Apple 生态）。所有 SkyClan 分身目前都在 macOS 上，跨设备通讯统一走 SkyClan Chatroom。
+当前分身之间的通讯依赖 iMessage（仅限 Apple 生态）。macOS 分身之间可走 iMessage，Win11-WSL 分身无法使用 iMessage，跨平台通讯统一走 SkyClan Chatroom。
 
 ### 1.2 目标
 
