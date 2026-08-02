@@ -44,7 +44,7 @@ src/
 
 > **Schema 约定（v1.3，与 TPG HQ `chatroom-member-management.md` 对齐）：**
 >
-> `member_id` 必须是 8 位数字字符串（零填充），例如 `00000001`。
+> `member_id` 必须是 8 位数字字符串（零填充），例如 `10000001`。
 > `putMember` 会对入参做正则 `/^\d{8}$/` 校验，不合规直接抛错。
 > 旧 string-ID（如 `ruyi`）已被废弃，仅作为 `nickname` / `display_name` 标签保留。
 

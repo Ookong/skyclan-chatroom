@@ -5,7 +5,7 @@
  * All routes are under /chat/* prefix.
  *
  * Schema aligned with TPG HQ `chatroom-member-management.md` v1.3:
- *   - member_id is **8-digit numeric string** (e.g. "00000001")
+ *   - member_id is **8-digit numeric string** (e.g. "10000001")
  *   - mentions in message content use `@<member_id>` syntax (8 digits)
  *   - DM channel: `dm:<member_id>` with 8-digit recipient id
  *

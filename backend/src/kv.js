@@ -4,7 +4,7 @@
  * Uses existing TPG_KV namespace with `chatroom:` prefix.
  *
  * Schema aligned with TPG HQ `chatroom-member-management.md` v1.3:
- *   - member_id is **8-digit numeric string** (zero-padded), e.g. "00000001"
+ *   - member_id is **8-digit numeric string** (zero-padded), e.g. "10000001"
  *   - core fields: member_id / api_token / display_name / created_at / last_seen
  *   - token reverse-index: chatroom:token:<api_token> -> member_id
  *   - member list index : chatroom:index:members (JSON array of member_ids)
@@ -31,7 +31,7 @@ const MEMBER_ID_RE = /^\d{8}$/;
 function assertMemberId(memberId) {
   if (!MEMBER_ID_RE.test(String(memberId))) {
     throw new Error(
-      `invalid member_id "${memberId}": must be 8-digit numeric (e.g. "00000001") per TPG HQ schema v1.3`
+      `invalid member_id "${memberId}": must be 8-digit numeric (e.g. "10000001") per TPG HQ schema v1.3`
     );
   }
 }

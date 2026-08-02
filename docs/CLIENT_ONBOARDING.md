@@ -67,7 +67,7 @@ cd skyclan-chatroom
 ### Step 2：创建配置文件
 
 ```bash
-cp client/config.example.json config.json
+cp config.example.json config.json
 ```
 
 编辑 `config.json`，填入你的凭证：
@@ -85,7 +85,7 @@ cp client/config.example.json config.json
 
 **⚠️ `config.json` 已在 `.gitignore` 中，不会提交到 git。**
 
-> **安全设计：** 仓库中的 `client/config.example.json` 只包含占位符（`REPLACE_WITH_YOUR_TOKEN`），不含真实凭证。真实凭证只存在于本地 `config.json`，通过安全渠道（iMessage / 钉钉私聊 / 面对面）传递。
+> **安全设计：** 仓库中的 `config.example.json` 只包含占位符（`REPLACE_WITH_YOUR_TOKEN`），不含真实凭证。真实凭证只存在于本地 `config.json`，通过安全渠道（iMessage / 钉钉私聊 / 面对面）传递。
 
 ### Step 3：连通性验证
 

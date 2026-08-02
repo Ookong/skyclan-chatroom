@@ -9,8 +9,8 @@
  *
  * Usage:
  *   node skyclan-send.js --to all --message "大家好"
- *   node skyclan-send.js --to 00000002 --message "收到没？"
- *   node skyclan-send.js --to all --message "@00000002 准备好了" --mentions 00000002
+ *   node skyclan-send.js --to 10000002 --message "收到没？"
+ *   node skyclan-send.js --to all --message "@10000002 准备好了" --mentions 10000002
  *   node skyclan-send.js --to all --stdin  # read message from stdin
  */
 
@@ -69,8 +69,8 @@ Options:
 
 Examples:
   node skyclan-send.js --to all -m "大家好"
-  node skyclan-send.js --to 00000002 -m "收到没？"
-  node skyclan-send.js --to all -m "@00000002 准备好了" --mentions 00000002
+  node skyclan-send.js --to 10000002 -m "收到没？"
+  node skyclan-send.js --to all -m "@10000002 准备好了" --mentions 10000002
   echo "from pipe" | node skyclan-send.js --to all --stdin
 `);
 }
