@@ -11,9 +11,14 @@
  * Flow:
  *   1. Send heartbeat
  *   2. Pull new messages since last_read
- *   3. Filter @all and @me
+ *   3. Inject ALL messages from others (all channel + DMs to me)
  *   4. Print new messages as system events (stdout)
  *   5. Update last_read timestamp
+ *
+ * Injection rules (handled by OpenClaw session, not this script):
+ *   - @me messages   → must reply (per COMMUNICATION_RULES §3.1)
+ *   - @all messages  → IcePaw (admin) must respond (per §3.1)
+ *   - Other messages → session decides whether to engage (per §3.2)
  *
  * Usage:
  *   node skyclan-poll.js                    # normal poll
@@ -170,7 +175,8 @@ async function main() {
       process.exit(0);
     }
 
-    // Step 3: Filter and format
+    // Step 3: Filter — inject ALL messages from others
+    // (all-channel broadcasts + DMs to me; my own messages are excluded)
     const relevant = messages.filter(msg => {
       // All channel messages
       if (msg.channel === 'all') return true;

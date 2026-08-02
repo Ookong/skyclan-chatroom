@@ -397,11 +397,16 @@ SSH 签名认证、消息加密、多媒体支持。
 ```
 skyclan-chatroom/                ← 花果山 docs（本目录）
 ├── docs/
+│   ├── README.md                ← 项目说明
 │   ├── PRD.md                   ← 本文档
 │   ├── ADMIN_PANEL.md           ← TPG HQ 管理后台扩展任务
 │   ├── CLIENT_ONBOARDING.md     ← 分身接入流程
-│   └── COMMUNICATION_RULES.md   ← 沟通规则
-└── README.md                    ← 项目说明（待写）
+│   ├── COMMUNICATION_RULES.md   ← 沟通规则
+│   ├── IMPROVEMENT-PLAN.md      改进方案（讨论中）
+│   ├── KV-OPTIMIZATION.md       KV 存储优化记录
+│   ├── review-2026-07-04.md     IcePaw 代码评审
+│   └── TODO.md                  未来工作
+└── (no files at root)
 
 skyclan-chatroom-backend/        ← 独立 GitHub repo（后端代码）
 ├── src/

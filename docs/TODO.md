@@ -88,7 +88,7 @@
 
 ## 文档
 
-- `README.md` —— 项目总览
+- `docs/README.md` —— 项目总览
 - `docs/PRD.md` —— 产品需求
 - `docs/ADMIN_PANEL.md` —— TPG HQ 后台扩展
 - `docs/CLIENT_ONBOARDING.md` —— 分身接入
