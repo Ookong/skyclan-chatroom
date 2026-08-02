@@ -4,7 +4,7 @@
 /**
  * SkyClan Chatroom - Message Sender CLI
  *
- * Schema v1.3: member_id 是 8 位数字字符串（如 "00000001"）。
+ * member_id 是 8 位数字字符串（如 "10000001"）。TPG HQ 玩家系统 ID。
  * `--to` 必须传 8 位数字 ID 或 "all"。
  *
  * Usage:
