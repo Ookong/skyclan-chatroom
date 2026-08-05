@@ -139,20 +139,23 @@ async function run() {
     assert(res.ok, `poll failed: ${res.status}`);
     assert(res.json.messages, 'missing messages array');
 
-    // Find our test messages
-    const testMsgs = res.json.messages.filter(m =>
-      m.content && m.content.includes('E2E test message')
+    // Find our test messages (all-channel only, exclude DMs for consistent seq tracking)
+    const allTestMsgs = res.json.messages.filter(m =>
+      m.channel === 'all' && m.content && m.content.includes('E2E test message')
     );
-    assert(testMsgs.length >= 2, `expected ≥2 test messages, got ${testMsgs.length}`);
+    assert(allTestMsgs.length >= 2, `expected ≥2 all-channel test messages, got ${allTestMsgs.length}`);
+
+    // Sort by server_seq to ensure correct ordering
+    allTestMsgs.sort((a, b) => (parseInt(a.server_seq) || 0) - (parseInt(b.server_seq) || 0));
 
     // Verify server_seq exists and is numeric
-    for (const msg of testMsgs) {
+    for (const msg of allTestMsgs) {
       assert(msg.server_seq !== undefined, `message ${msg.msg_id} missing server_seq`);
     }
 
-    // Record seq values for later tests
-    seqAfterFirst = parseInt(testMsgs[0].server_seq) || 0;
-    seqAfterSecond = parseInt(testMsgs[testMsgs.length - 1].server_seq) || 0;
+    // Record seq values for later tests (from all-channel messages only)
+    seqAfterFirst = parseInt(allTestMsgs[0].server_seq) || 0;
+    seqAfterSecond = parseInt(allTestMsgs[allTestMsgs.length - 1].server_seq) || 0;
 
     // Verify monotonic increment
     assert(seqAfterSecond > seqAfterFirst,
@@ -170,7 +173,10 @@ async function run() {
     assert(testMsgs.length === 0, `expected 0 new test messages, got ${testMsgs.length}`);
   });
 
-  // 5. Poll with since_seq=<middle> — should return only messages after that seq
+  // 5. Poll with since_seq=<first all msg> — should return messages with seq > that
+  // Note: counter is global (all channels share seq), so DMs between our two
+  // all-channel messages will have seq values in between. This test verifies
+  // that filtering works correctly, not that seq is contiguous per-channel.
   await test('Poll since_seq=<middle> → returns only newer', async () => {
     const res = await apiCall(config, 'GET', `/chat/messages?since_seq=${seqAfterFirst}&limit=50`);
     assert(res.ok, `poll failed: ${res.status}`);
@@ -182,7 +188,7 @@ async function run() {
         `message ${msg.msg_id} has seq ${msgSeq} ≤ ${seqAfterFirst}`);
     }
 
-    // Second test message should be here
+    // Second test message (all-channel) should be here since its seq > first
     const hasSecond = msgs.some(m => m.msg_id === secondMsgId);
     assert(hasSecond, `second test message ${secondMsgId} not found in results`);
   });
