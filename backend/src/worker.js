@@ -25,6 +25,7 @@ import {
   getMember,
   getMemberList,
   updateLastSeen,
+  MEMBER_ID_RE,
 } from './kv.js';
 
 const CORS_HEADERS = {
@@ -101,7 +102,11 @@ export async function handleChat(request, env, ctx) {
         }
       }
 
-      const mentions = body.mentions || parseMentions(body.content);
+      // Always parse mentions from content (server-side resolution).
+      // Client may pass explicit mentions, but we also parse to catch @nickname.
+      const explicitMentions = Array.isArray(body.mentions) ? body.mentions : [];
+      const parsedMentions = await parseMentions(body.content, env);
+      const mentions = [...new Set([...explicitMentions, ...parsedMentions])];
 
       const msg = await putMessage(env, {
         sender: auth.member_id,
@@ -173,19 +178,59 @@ function jsonResponse(data, status = 200) {
 
 /**
  * Parse @mentions from message content.
- * Supports @all and @<member_id> (8-digit numeric).
+ * Supports: @all, @<8-digit-member_id>, @<nickname> (including CJK).
  *
- * Note: v1.3 uses 8-digit member_id for deterministic routing.
- * Nickname-based mentions (e.g. @如意) are NOT supported because
- * \w does not match CJK characters. Clients should resolve display_name
- * → member_id and send @<8-digit-id> in message content.
+ * Nickname resolution: loads member list from KV, builds nickname→member_id map.
+ * Matches case-insensitively for ASCII nicknames (icepaw ≈ IcePaw).
+ *
+ * Regex: /@([^\s@,，。.!！?？]+)/g
+ *   - Captures @ followed by non-whitespace, non-punctuation chars
+ *   - Handles CJK: @如意, @冰爪, @小马, @龙井
+ *   - Handles ASCII: @icepaw, @IcePaw, @10000002, @all
  */
-function parseMentions(content) {
-  const mentions = [];
-  const regex = /@(\w+)/g;
+async function parseMentions(content, env) {
+  // Extract raw @tokens from content
+  const regex = /@([^\s@,，。.!！?？]+)/g;
+  const raw = [];
   let match;
   while ((match = regex.exec(content)) !== null) {
-    mentions.push(match[1]);
+    raw.push(match[1]);
   }
-  return [...new Set(mentions)];
+  const unique = [...new Set(raw)];
+
+  // Fast path: if no @ at all
+  if (unique.length === 0) return [];
+
+  // Build nickname→member_id map from KV member list
+  const members = await getMemberList(env);
+  const nameToId = new Map();
+  for (const m of members) {
+    // Chinese nicknames
+    if (m.nickname) nameToId.set(m.nickname, m.member_id);
+    if (m.display_name && m.display_name !== m.nickname) {
+      nameToId.set(m.display_name, m.member_id);
+    }
+    // ASCII nicknames (case-insensitive)
+    if (m.nickname) nameToId.set(m.nickname.toLowerCase(), m.member_id);
+    if (m.display_name) nameToId.set(m.display_name.toLowerCase(), m.member_id);
+  }
+
+  const resolved = [];
+  for (const token of unique) {
+    if (token === 'all') {
+      resolved.push('all');
+    } else if (MEMBER_ID_RE.test(token)) {
+      // Already a valid 8-digit member_id
+      resolved.push(token);
+    } else {
+      // Try nickname resolution (case-insensitive for ASCII)
+      const id = nameToId.get(token) || nameToId.get(token.toLowerCase());
+      if (id) {
+        resolved.push(id);
+      }
+      // Unresolved @tokens are silently skipped
+    }
+  }
+
+  return resolved;
 }

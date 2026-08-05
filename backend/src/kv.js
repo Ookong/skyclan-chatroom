@@ -7,6 +7,7 @@
  *   - getMessages now uses KV.list prefix scan + server_seq filtering
  *   - Message key unchanged: chatroom:msg:<unix_ms>_<rand4>
  *   - Backward compat: since=<timestamp> still works alongside since_seq=<int>
+ *   - Exported MEMBER_ID_RE for use in worker.js mention parsing
  *
  * Uses existing TPG_KV namespace with `chatroom:` prefix.
  *
@@ -33,6 +34,8 @@ function assertMemberId(memberId) {
     );
   }
 }
+
+export { MEMBER_ID_RE };
 
 // --- Messages ---
 

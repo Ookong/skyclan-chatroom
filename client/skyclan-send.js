@@ -143,15 +143,22 @@ async function main() {
   const channel = opts.to === 'all' ? 'all' : `dm:${opts.to}`;
 
   // Parse mentions if not provided
+  // Client-side: extract raw @tokens (both ASCII and CJK)
+  // Server-side: resolves nicknames to member_id automatically
   let mentions = opts.mentions;
   if (!mentions) {
     mentions = [];
-    const regex = /@(\w+)/g;
+    // Match @ followed by non-whitespace, non-punctuation chars
+    // Supports CJK nicknames: @如意, @冰爪, @小马, @龙井
+    // Supports ASCII: @icepaw, @IcePaw, @all, @10000002
+    const regex = /@([^\s@,，。.!！?？]+)/g;
     let match;
     while ((match = regex.exec(message)) !== null) {
       mentions.push(match[1]);
     }
     mentions = [...new Set(mentions)];
+    // Send raw tokens — server resolves nicknames to member_id
+    // For numeric IDs and 'all', they pass through as-is
   }
 
   const body = JSON.stringify({ channel, content: message, mentions });
