@@ -200,9 +200,10 @@ async function main() {
     const fromOthers = relevant.filter(msg => msg.sender !== memberId);
 
     if (fromOthers.length === 0) {
-      // Only my own messages - just update last_read
+      // Only my own messages - just update last_read (prefer server_seq)
       const latest = messages[messages.length - 1];
-      setLastRead(stateDir, memberId, latest.msg_id);
+      const lastVal = latest.server_seq ? String(latest.server_seq) : latest.msg_id;
+      setLastRead(stateDir, memberId, lastVal);
       if (verbose) console.log('✅ poll: only own messages, skipping');
       process.exit(0);
     }
