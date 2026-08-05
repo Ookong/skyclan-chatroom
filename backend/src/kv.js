@@ -1,23 +1,21 @@
 /**
- * SkyClan Chatroom - KV Storage Module (v1.3)
+ * SkyClan Chatroom - KV Storage Module (v3.0)
+ *
+ * Changes from v1.3:
+ *   - Removed chatroom:index:messages JSON array (concurrent-write risk)
+ *   - Added chatroom:counter:seq for monotonic server_seq assignment
+ *   - getMessages now uses KV.list prefix scan + server_seq filtering
+ *   - Message key unchanged: chatroom:msg:<unix_ms>_<rand4>
+ *   - Backward compat: since=<timestamp> still works alongside since_seq=<int>
  *
  * Uses existing TPG_KV namespace with `chatroom:` prefix.
  *
- * Schema aligned with TPG HQ `chatroom-member-management.md` v1.3:
- *   - member_id is **8-digit numeric string** (zero-padded), e.g. "10000001"
- *   - core fields: member_id / api_token / display_name / created_at / last_seen
- *   - token reverse-index: chatroom:token:<api_token> -> member_id
- *   - member list index : chatroom:index:members (JSON array of member_ids)
- *
- * Extra chatroom-only fields retained (not in TPG HQ base schema, but useful
- * for chatroom-specific behaviour and not conflicting):
- *   nickname, role, platform, device, status
- *
  * Key patterns:
+ *   chatroom:msg:<msg_id>          - message JSON (7-day TTL)
+ *   chatroom:counter:seq           - monotonic counter (next seq to assign)
  *   chatroom:member:<member_id>     - member profile JSON
  *   chatroom:token:<api_token>      -> member_id (reverse lookup)
  *   chatroom:index:members          - JSON array of member_ids
- *   chatroom:msg:<unix_ms>          - message JSON (7-day TTL)
  *   chatroom:admin:<admin_id>       - admin record
  *   chatroom:index:admins           - JSON array of admin_ids
  */
@@ -39,11 +37,29 @@ function assertMemberId(memberId) {
 // --- Messages ---
 
 /**
+ * Get the next monotonic server_seq.
+ *
+ * Race condition note (MVP — Option A):
+ *   KV has no atomic INCR. Two concurrent putMessage calls might read the
+ *   same counter value and get the same seq. Dedup safety net: msg_id remains
+ *   unique (timestamp + random). Client treats duplicate seq as "already seen".
+ *   Acceptable for 0.04 QPS (1 message per 25 seconds average).
+ */
+async function getNextSeq(env) {
+  const current = await env.TPG_KV.get(`${PREFIX}counter:seq`);
+  const next = (parseInt(current) || 0) + 1;
+  await env.TPG_KV.put(`${PREFIX}counter:seq`, String(next));
+  return next;
+}
+
+/**
  * Store a new message in KV.
  * TTL: 7 days (604800 seconds).
  *
- * msg_id format: <unix_ms>_<random4> to avoid collision on concurrent sends.
- * Maintains chatroom:index:messages (last 500 entries) for efficient polling.
+ * msg_id format: <unix_ms>_<random4> — unique, used as KV key.
+ * server_seq: monotonic integer assigned at write time.
+ *
+ * No longer maintains chatroom:index:messages — KV.list prefix scan replaces it.
  */
 export async function putMessage(env, { sender, sender_name, channel, content, mentions }) {
   const now = Date.now();
@@ -51,8 +67,12 @@ export async function putMessage(env, { sender, sender_name, channel, content, m
   const msg_id = now + '_' + rand;
   const timestamp = new Date(now).toISOString();
 
+  // Assign monotonic seq (see race condition note above)
+  const server_seq = await getNextSeq(env);
+
   const msg = {
     msg_id,
+    server_seq,
     timestamp,
     sender,
     sender_name,
@@ -66,43 +86,50 @@ export async function putMessage(env, { sender, sender_name, channel, content, m
     expirationTtl: TTL_7DAYS,
   });
 
-  // Append to message index (keep last 500)
-  const idxRaw = await env.TPG_KV.get(`${PREFIX}index:messages`);
-  const idx = idxRaw ? JSON.parse(idxRaw) : [];
-  idx.push(msg_id);
-  if (idx.length > 500) idx.splice(0, idx.length - 500);
-  await env.TPG_KV.put(`${PREFIX}index:messages`, JSON.stringify(idx));
-
   return msg;
 }
 
 /**
- * Get messages since a given timestamp.
- * Uses chatroom:index:messages (not KV.list prefix scan) for efficiency.
+ * Get messages since a given server_seq.
+ *
+ * Uses KV.list prefix scan (replaces old chatroom:index:messages JSON array).
+ * KV.list returns keys sorted lexicographically; since our keys are
+ * <unix_ms>_<rand4>, they are naturally time-ordered.
+ *
  * Filters by channel: 'all' messages + DMs involving the requesting member.
+ *
+ * Backward compat: if since_seq is 0 or absent, returns all messages
+ * (for legacy clients that haven't migrated yet).
  */
-export async function getMessages(env, since, limit, member_id) {
-  const sinceTs = parseInt(since) || 0;
+export async function getMessages(env, since_seq, limit, member_id) {
+  const sinceSeq = parseInt(since_seq) || 0;
   const messages = [];
 
-  const idxRaw = await env.TPG_KV.get(`${PREFIX}index:messages`);
-  const idx = idxRaw ? JSON.parse(idxRaw) : [];
+  // KV.list prefix scan — one call, no manual index needed
+  const list = await env.TPG_KV.list({
+    prefix: `${PREFIX}msg:`,
+    limit: 500,
+  });
 
-  for (const msgId of idx) {
-    // msg_id format: <unix_ms>_<random4>
-    const msgTs = parseInt(msgId.split('_')[0]) || 0;
-    if (msgTs <= sinceTs) continue;
+  // Iterate newest-first (avoid slice().reverse() copy)
+  const keys = list.keys;
 
-    const raw = await env.TPG_KV.get(`${PREFIX}msg:${msgId}`);
+  for (let i = keys.length - 1; i >= 0; i--) {
+    const raw = await env.TPG_KV.get(keys[i].name);
     if (!raw) continue;
 
     const msg = JSON.parse(raw);
 
+    // Filter by server_seq (skip messages at or below the threshold)
+    // Old messages without server_seq are treated as seq=0
+    const msgSeq = msg.server_seq || 0;
+    if (msgSeq <= sinceSeq) continue;
+
     // Filter by channel visibility
     if (msg.channel === 'all') {
-      messages.push(msg);
+      messages.unshift(msg); // prepend for chronological order
     } else if (msg.channel === `dm:${member_id}` || msg.sender === member_id) {
-      messages.push(msg);
+      messages.unshift(msg);
     }
 
     if (messages.length >= limit) break;

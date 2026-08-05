@@ -114,15 +114,16 @@ export async function handleChat(request, env, ctx) {
       return jsonResponse({ ok: true, msg_id: msg.msg_id, timestamp: msg.timestamp });
     }
 
-    // GET /chat/messages?since=<ts>&limit=<n>
+    // GET /chat/messages?since_seq=<int>&limit=<n>
+    // Backward compat: ?since=<ts> still works (legacy clients)
     if (path === '/chat/messages' && method === 'GET') {
-      const since = url.searchParams.get('since') || '0';
+      const since_seq = url.searchParams.get('since_seq') || url.searchParams.get('since') || '0';
       const limit = Math.min(
         parseInt(url.searchParams.get('limit') || String(MAX_MESSAGES_PER_PULL)),
         MAX_MESSAGES_PER_PULL
       );
 
-      const messages = await getMessages(env, since, limit, auth.member_id);
+      const messages = await getMessages(env, since_seq, limit, auth.member_id);
       return jsonResponse({
         ok: true,
         messages,

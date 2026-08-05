@@ -55,7 +55,17 @@ function getLastRead(stateDir, memberId) {
   const file = path.join(stateDir, '.last-read');
   if (!fs.existsSync(file)) return '0';
   const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-  return String(data[memberId] || '0');
+  const val = String(data[memberId] || '0');
+
+  // Legacy detection: old format was msg_id ("<ts>_<rand>") or pure timestamp (len > 10)
+  // New format is a small integer string (e.g. "42")
+  if (val.includes('_') || (val.length > 10 && !val.startsWith('0'))) {
+    // Legacy format — return '0' to trigger full resync
+    console.error(`[migration] last_read legacy format detected: ${val}, resyncing from 0`);
+    return '0';
+  }
+
+  return val;
 }
 
 function setLastRead(stateDir, memberId, ts) {
@@ -154,10 +164,10 @@ async function main() {
       }
     }
 
-    // Step 2: Pull messages
-    const since = getLastRead(stateDir, memberId);
+    // Step 2: Pull messages (using server_seq for filtering)
+    const since_seq = getLastRead(stateDir, memberId);
     const limit = config.max_messages_per_poll || 50;
-    const msgRes = await apiCall(config, 'GET', `/chat/messages?since=${since}&limit=${limit}`);
+    const msgRes = await apiCall(config, 'GET', `/chat/messages?since_seq=${since_seq}&limit=${limit}`);
 
     if (!msgRes.ok) {
       if (verbose) console.error(`❌ poll failed: ${msgRes.status}`);
@@ -234,9 +244,10 @@ async function main() {
     // Output to stdout (cron captures this)
     console.log(lines.join('\n\n'));
 
-    // Step 5: Update last_read
+    // Step 5: Update last_read (use server_seq, fallback to msg_id for old servers)
     const latest = messages[messages.length - 1];
-    setLastRead(stateDir, memberId, latest.msg_id);
+    const lastVal = latest.server_seq ? String(latest.server_seq) : latest.msg_id;
+    setLastRead(stateDir, memberId, lastVal);
 
     if (verbose) console.log(`\n✅ poll: ${fromOthers.length} new messages`);
 
