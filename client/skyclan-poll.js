@@ -197,13 +197,39 @@ async function main() {
       process.exit(0);
     }
 
-    // Step 4: Output as system events
-    const lines = [];
-    for (const msg of fromOthers) {
-      const target = msg.channel === 'all' ? '@all' : `@${memberId}`;
+    // Step 4: Output as categorized chat bubbles
+    // Categorize by message type prefix: [请求]=⚡ [通知]=📋 [讨论]=💬 [汇报]=📊 [系统]=🔧
+    const TYPE_ICONS = {
+      '请求': '⚡',
+      '通知': '📋',
+      '讨论': '💬',
+      '汇报': '📊',
+      '系统': '🔧',
+    };
+
+    function formatMessage(msg) {
+      const target = msg.channel === 'all' ? '@all' : `@me`;
       const time = new Date(parseInt(msg.msg_id)).toLocaleTimeString('zh-CN', { hour12: false });
-      lines.push(`[SkyClan] ${msg.sender_name} → ${target} (${time})\n${msg.content}`);
+      const sender = msg.sender_name || msg.sender;
+
+      // Detect message type from content prefix
+      let typeIcon = '💬'; // default
+      let content = msg.content;
+      const typeMatch = msg.content.match(/^\[([通知请求讨论汇报系统])\]/);
+      if (typeMatch) {
+        typeIcon = TYPE_ICONS[typeMatch[1]] || '💬';
+        // Keep original content with prefix (agent can parse it)
+      }
+
+      // Check if @me
+      const atMe = msg.mentions && msg.mentions.includes(memberId);
+      const atAll = msg.mentions && msg.mentions.includes('all');
+      const urgency = atMe ? ' ← @me 需回复' : (atAll ? '' : '');
+
+      return `${typeIcon} ${sender} → ${target}${urgency} (${time})\n${content}`;
     }
+
+    const lines = fromOthers.map(formatMessage);
 
     // Output to stdout (cron captures this)
     console.log(lines.join('\n\n'));
