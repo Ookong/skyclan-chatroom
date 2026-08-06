@@ -56,15 +56,12 @@ function getLastRead(stateDir, memberId) {
   if (!fs.existsSync(file)) return '0';
   const data = JSON.parse(fs.readFileSync(file, 'utf8'));
   const val = String(data[memberId] || '0');
-
   // Legacy detection: old format was msg_id ("<ts>_<rand>") or pure timestamp (len > 10)
   // New format is a small integer string (e.g. "42")
   if (val.includes('_') || (val.length > 10 && !val.startsWith('0'))) {
-    // Legacy format — return '0' to trigger full resync
     console.error(`[migration] last_read legacy format detected: ${val}, resyncing from 0`);
     return '0';
   }
-
   return val;
 }
 
@@ -166,7 +163,7 @@ async function main() {
 
     // Step 2: Pull messages (using server_seq for filtering)
     const since_seq = getLastRead(stateDir, memberId);
-    const limit = config.max_messages_per_poll || 50;
+    const limit = Math.min(config.max_messages_per_poll || 50, 20);
     const msgRes = await apiCall(config, 'GET', `/chat/messages?since_seq=${since_seq}&limit=${limit}`);
 
     if (!msgRes.ok) {
