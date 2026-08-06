@@ -162,6 +162,16 @@ async function main() {
     // For numeric IDs and 'all', they pass through as-is
   }
 
+  // DM auto-mention: when sending a DM (--to <member_id>), automatically add
+  // the recipient to mentions so their poll detects @me for instant reply.
+  // Without this, DMs without explicit @recipient in content won't trigger
+  // the 2-min cron fast-path (per scheme F architecture).
+  if (opts.to !== 'all' && /^\d{8}$/.test(opts.to)) {
+    if (!mentions.includes(opts.to)) {
+      mentions.push(opts.to);
+    }
+  }
+
   const body = JSON.stringify({ channel, content: message, mentions });
 
   const headers = {
