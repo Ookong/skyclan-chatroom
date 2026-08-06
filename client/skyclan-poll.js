@@ -9,11 +9,10 @@
  * Called by OpenClaw cron every 2 minutes.
  *
  * Flow:
- *   1. Send heartbeat
- *   2. Pull new messages since last_read
- *   3. Inject ALL messages from others (all channel + DMs to me)
- *   4. Print new messages as system events (stdout)
- *   5. Update last_read timestamp
+ *   1. Pull new messages since last_read (no heartbeat — per KV-OPTIMIZATION Phase 0.5)
+ *   2. Inject ALL messages from others (all channel + DMs to me)
+ *   3. Print new messages as system events (stdout)
+ *   4. Update last_read timestamp
  *
  * Injection rules (handled by OpenClaw session, not this script):
  *   - @me messages   → must reply (per COMMUNICATION_RULES §3.1)
@@ -149,19 +148,21 @@ async function main() {
   if (verbose) console.log(`[${new Date().toISOString()}] Polling as ${memberId}...`);
 
   try {
-    // Step 1: Heartbeat (only if > 60s since last)
+    // Step 0: Throttled heartbeat — update last_seen every 30 min max
+    // (KV-OPTIMIZATION: was every 60s = 1440 writes/day, now ~48 writes/day)
+    const HEARTBEAT_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
     const lastHb = getLastHeartbeat(stateDir, memberId);
-    if (Date.now() - lastHb > 60000) {
-      const hbRes = await apiCall(config, 'POST', '/chat/heartbeat');
-      if (hbRes.ok) {
-        setLastHeartbeat(stateDir, memberId);
-        if (verbose) console.log('✅ heartbeat OK');
-      } else {
-        if (verbose) console.error(`❌ heartbeat failed: ${hbRes.status}`);
-      }
+    if (Date.now() - lastHb >= HEARTBEAT_INTERVAL_MS) {
+      try {
+        const hbRes = await apiCall(config, 'POST', '/chat/heartbeat');
+        if (hbRes.ok) {
+          setLastHeartbeat(stateDir, memberId);
+          if (verbose) console.log('   heartbeat sent ✅');
+        }
+      } catch (_) { /* non-fatal */ }
     }
 
-    // Step 2: Pull messages (using server_seq for filtering)
+    // Step 1: Pull messages (using server_seq for filtering)
     const since_seq = getLastRead(stateDir, memberId);
     const limit = Math.min(config.max_messages_per_poll || 50, 20);
     const msgRes = await apiCall(config, 'GET', `/chat/messages?since_seq=${since_seq}&limit=${limit}`);
@@ -182,7 +183,7 @@ async function main() {
       process.exit(0);
     }
 
-    // Step 3: Filter — inject ALL messages from others
+    // Step 2: Filter — inject ALL messages from others
     // (all-channel broadcasts + DMs to me; my own messages are excluded)
     const relevant = messages.filter(msg => {
       // All channel messages
@@ -205,7 +206,7 @@ async function main() {
       process.exit(0);
     }
 
-    // Step 4: Output as categorized chat bubbles
+    // Step 2: Output as categorized chat bubbles
     // Categorize by message type prefix: [请求]=⚡ [通知]=📋 [讨论]=💬 [汇报]=📊 [系统]=🔧
     const TYPE_ICONS = {
       '请求': '⚡',
@@ -242,7 +243,7 @@ async function main() {
     // Output to stdout (cron captures this)
     console.log(lines.join('\n\n'));
 
-    // Step 5: Update last_read (use server_seq, fallback to msg_id for old servers)
+    // Step 3: Update last_read (use server_seq, fallback to msg_id for old servers)
     const latest = messages[messages.length - 1];
     const lastVal = latest.server_seq ? String(latest.server_seq) : latest.msg_id;
     setLastRead(stateDir, memberId, lastVal);
