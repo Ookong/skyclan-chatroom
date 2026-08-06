@@ -174,6 +174,12 @@ async function main() {
     if (res.ok) {
       console.log(`✅ Sent → ${opts.to === 'all' ? '@all' : '@' + opts.to}`);
       console.log(`   msg_id: ${res.json.msg_id}`);
+
+      // Piggyback heartbeat on send — updates last_seen without extra KV cost
+      // (send already wrote to KV; this just updates the member object)
+      try {
+        await post(`${config.api_base}/chat/heartbeat`, '{}', headers);
+      } catch (_) { /* heartbeat failure should not affect send */ }
     } else {
       console.error(`❌ Send failed (${res.status}): ${res.json?.error || res.raw || 'unknown error'}`);
       if (res.status === 401) {
