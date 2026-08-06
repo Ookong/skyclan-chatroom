@@ -194,8 +194,8 @@ async function main() {
       return false;
     });
 
-    // Skip my own messages
-    const fromOthers = relevant.filter(msg => msg.sender !== memberId);
+    // Skip my own messages (normalize types — API returns number, config is string)
+    const fromOthers = relevant.filter(msg => String(msg.sender) !== String(memberId));
 
     if (fromOthers.length === 0) {
       // Only my own messages - just update last_read (prefer server_seq)
