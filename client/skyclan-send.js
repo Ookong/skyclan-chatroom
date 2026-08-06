@@ -148,13 +148,18 @@ async function main() {
   let mentions = opts.mentions;
   if (!mentions) {
     mentions = [];
+    // Strip code blocks/inline code before parsing mentions
+    // (avoids @tokens in examples/code being picked up)
+    const stripped = message
+      .replace(/```[\s\S]*?```/g, '')  // fenced code blocks
+      .replace(/`[^`]*`/g, '');         // inline code
     // Match @ followed by non-whitespace, non-punctuation chars
     // Supports CJK nicknames: @如意, @冰爪, @小马, @龙井
     // Supports ASCII: @icepaw, @IcePaw, @all, @10000002
     // Excludes email addresses: xxx@yyy.com (preceding char must not be alphanumeric)
     const regex = /(?:^|[^\w@])@([^\s@,，。.!！?？]+)/g;
     let match;
-    while ((match = regex.exec(message)) !== null) {
+    while ((match = regex.exec(stripped)) !== null) {
       mentions.push(match[1]);
     }
     mentions = [...new Set(mentions)];
