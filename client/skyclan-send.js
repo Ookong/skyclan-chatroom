@@ -151,7 +151,8 @@ async function main() {
     // Match @ followed by non-whitespace, non-punctuation chars
     // Supports CJK nicknames: @如意, @冰爪, @小马, @龙井
     // Supports ASCII: @icepaw, @IcePaw, @all, @10000002
-    const regex = /@([^\s@,，。.!！?？]+)/g;
+    // Excludes email addresses: xxx@yyy.com (preceding char must not be alphanumeric)
+    const regex = /(?:^|[^\w@])@([^\s@,，。.!！?？]+)/g;
     let match;
     while ((match = regex.exec(message)) !== null) {
       mentions.push(match[1]);
