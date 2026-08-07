@@ -2,27 +2,22 @@
 'use strict';
 
 /**
- * SkyClan Chatroom - Message Poller (v2 — two-phase ack)
+ * SkyClan Chatroom - Message Poller (v3 — trigger.script mode)
  *
- * member_id 是 8 位数字字符串（如 "10000001"）。TPG HQ 玩家系统 ID。
+ * Design change from v2:
+ *   - v2: Output ALL messages from others → agent decides what to reply
+ *   - v3: ONLY output messages that @me or @all → everything else silently acked
+ *
+ * This means:
+ *   - Empty output (no @me/@all) → cron agent sees nothing → NO_REPLY → zero token waste
+ *   - Non-empty output → cron agent knows it must respond
+ *   - Two-phase ack simplified: advance last_read for non-actionable messages immediately,
+ *     only use .pending for messages that need a reply
  *
  * Called by OpenClaw cron every 2 minutes.
  *
- * Two-phase ack flow (prevents message loss on agent timeout):
- *   1. Pull new messages since last_read
- *   2. Write messages to .pending file (NOT advancing last_read yet)
- *   3. Output messages to stdout (cron injects into session)
- *   4. On next poll: check if .pending exists
- *      a. If .pending age < ACK_TIMEOUT → last poll might still be processing, skip
- *      b. If .pending age ≥ ACK_TIMEOUT → assume success, ack pending → advance last_read
- *      c. Then continue with normal poll
- *
- * This ensures: if agent model call times out, messages are NOT lost.
- * They stay in .pending until acked, and last_read is only advanced after
- * a successful processing window.
- *
  * Usage:
- *   node skyclan-poll.js                    # normal poll
+ *   node skyclan-poll.js                    # normal poll (quiet mode for cron)
  *   node skyclan-poll.js --once             # single poll, verbose output
  *   node skyclan-poll.js --ack              # manually ack pending (for testing)
  *   node skyclan-poll.js --config <path>    # custom config path
@@ -249,31 +244,42 @@ async function main() {
       process.exit(0);
     }
 
-    // Step 2: Filter — inject ALL messages from others
-    const relevant = messages.filter(msg => {
-      if (msg.channel === 'all') return true;
-      if (msg.channel === `dm:${memberId}`) return true;
-      return false;
-    });
+    // Step 2: Filter messages from others (not my own)
+    const fromOthers = messages.filter(msg => String(msg.sender) !== String(memberId));
 
-    // Skip my own messages (normalize types — API returns number, config is string)
-    const fromOthers = relevant.filter(msg => String(msg.sender) !== String(memberId));
-
-    // Compute last_seq from ALL messages (including own), not just fromOthers
+    // Compute last_seq from ALL messages (including own)
     const latest = messages[messages.length - 1];
     const lastVal = latest.server_seq ? String(latest.server_seq) : latest.msg_id;
 
     if (fromOthers.length === 0) {
-      // Only my own messages - write pending (will be acked next round quickly)
-      writePending(stateDir, memberId, [], lastVal);
-      if (verbose) console.log('✅ poll: only own messages, pending written');
+      // Only my own messages - advance last_read immediately
+      setLastRead(stateDir, memberId, lastVal);
+      if (verbose) console.log('✅ poll: only own messages, acked silently');
       process.exit(0);
     }
 
-    // Step 3: Write pending BEFORE outputting (two-phase ack)
-    writePending(stateDir, memberId, fromOthers, lastVal);
+    // Step 3 (v3 core change): Split messages into actionable vs informational
+    //   actionable = @me or @all → needs reply, use two-phase ack
+    //   informational = everything else → silently advance last_read
+    const actionable = fromOthers.filter(msg => {
+      const atMe = msg.mentions && msg.mentions.includes(memberId);
+      const atAll = msg.mentions && msg.mentions.includes('all');
+      const isDM = msg.channel === `dm:${memberId}`;
+      // @me, @all, or DM to me → actionable
+      return atMe || atAll || isDM;
+    });
 
-    // Step 4: Output as categorized chat bubbles
+    if (actionable.length === 0) {
+      // No messages need my reply - advance last_read immediately
+      setLastRead(stateDir, memberId, lastVal);
+      if (verbose) console.log(`✅ poll: ${fromOthers.length} messages (none @me/@all), acked silently`);
+      process.exit(0);
+    }
+
+    // Step 4: Write pending for actionable messages (two-phase ack)
+    writePending(stateDir, memberId, actionable, lastVal);
+
+    // Step 5: Output ONLY actionable messages as categorized chat bubbles
     const TYPE_ICONS = {
       '请求': '⚡',
       '通知': '📋',
@@ -295,18 +301,17 @@ async function main() {
       }
 
       const atMe = msg.mentions && msg.mentions.includes(memberId);
-      const atAll = msg.mentions && msg.mentions.includes('all');
-      const urgency = atMe ? ' ← @me 需回复' : (atAll ? '' : '');
+      const urgency = atMe ? ' ← @me 需回复' : '';
 
       return `${typeIcon} ${sender} → ${target}${urgency} (${time})\n${content}`;
     }
 
-    const lines = fromOthers.map(formatMessage);
+    const lines = actionable.map(formatMessage);
 
     // Output to stdout (cron captures this)
     console.log(lines.join('\n\n'));
 
-    if (verbose) console.log(`\n✅ poll: ${fromOthers.length} new messages (pending ack in ${ACK_TIMEOUT_MS / 1000}s)`);
+    if (verbose) console.log(`\n✅ poll: ${actionable.length} actionable messages (pending ack in ${ACK_TIMEOUT_MS / 1000}s)`);
 
   } catch (err) {
     console.error(`❌ poll error: ${err.message}`);
