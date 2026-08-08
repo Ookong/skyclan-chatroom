@@ -239,6 +239,13 @@ async function main() {
 
     const messages = msgRes.json.messages || [];
 
+    // Sort by msg_id (unix_ms timestamp prefix) ascending — don't rely on server_seq
+    messages.sort((a, b) => {
+      const tsA = parseInt(a.msg_id) || 0;
+      const tsB = parseInt(b.msg_id) || 0;
+      return tsA - tsB;
+    });
+
     if (messages.length === 0) {
       if (verbose) console.log('✅ poll: 0 new messages');
       process.exit(0);
@@ -247,9 +254,12 @@ async function main() {
     // Step 2: Filter messages from others (not my own)
     const fromOthers = messages.filter(msg => String(msg.sender) !== String(memberId));
 
-    // Compute last_seq from ALL messages (including own)
-    const latest = messages[messages.length - 1];
-    const lastVal = latest.server_seq ? String(latest.server_seq) : latest.msg_id;
+    // Compute last_seq: use max server_seq across ALL messages (robust against ordering issues)
+    const maxSeq = messages.reduce((mx, m) => {
+      const s = parseInt(m.server_seq);
+      return (!isNaN(s) && s > mx) ? s : mx;
+    }, 0);
+    const lastVal = maxSeq > 0 ? String(maxSeq) : (messages[messages.length - 1]?.msg_id || since_seq);
 
     if (fromOthers.length === 0) {
       // Only my own messages - advance last_read immediately
