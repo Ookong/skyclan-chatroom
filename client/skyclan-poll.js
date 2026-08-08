@@ -59,10 +59,10 @@ function getLastRead(stateDir, memberId) {
   if (!fs.existsSync(file)) return '0';
   const data = JSON.parse(fs.readFileSync(file, 'utf8'));
   const val = String(data[memberId] || '0');
-  // Legacy detection: old format was msg_id ("<ts>_<rand>") or pure timestamp (len > 10)
-  // New format is a small integer string (e.g. "42")
-  if (val.includes('_') || (val.length > 10 && !val.startsWith('0'))) {
-    console.error(`[migration] last_read legacy format detected: ${val}, resyncing from 0`);
+  // Migration: old format was small integer (server_seq), new format is unix_ms timestamp
+  // If val is a small integer (< 1e12), it's legacy server_seq → reset to 0 (fetch all)
+  if (!val.includes('_') && parseInt(val) > 0 && parseInt(val) < 1e12) {
+    console.error(`[migration] last_read legacy server_seq detected: ${val}, resyncing from 0`);
     return '0';
   }
   return val;
@@ -101,11 +101,11 @@ function getPendingFile(stateDir, memberId) {
   return path.join(stateDir, `.pending-${memberId}`);
 }
 
-function writePending(stateDir, memberId, messages, lastSeq) {
+function writePending(stateDir, memberId, messages, lastTs) {
   const file = getPendingFile(stateDir, memberId);
   const data = {
     created_at: Date.now(),
-    last_seq: String(lastSeq),
+    last_ts: String(lastTs),
     msg_count: messages.length,
   };
   fs.writeFileSync(file, JSON.stringify(data));
@@ -195,9 +195,9 @@ async function main() {
       const pendingAge = Date.now() - pending.created_at;
       if (pendingAge >= ACK_TIMEOUT_MS) {
         // Previous poll was processed (enough time elapsed) → ack it
-        if (verbose) console.log(`   ack pending (age: ${Math.round(pendingAge / 1000)}s, seq: ${pending.last_seq})`);
+        if (verbose) console.log(`   ack pending (age: ${Math.round(pendingAge / 1000)}s, ts: ${pending.last_ts})`);
         ackPending(stateDir, memberId);
-        setLastRead(stateDir, memberId, pending.last_seq);
+        setLastRead(stateDir, memberId, pending.last_ts);
       } else {
         // Previous poll might still be processing → skip this round
         if (verbose) console.log(`   ⏳ pending not yet acked (age: ${Math.round(pendingAge / 1000)}s < ${ACK_TIMEOUT_MS / 1000}s), skipping poll`);
@@ -224,10 +224,10 @@ async function main() {
       } catch (_) { /* non-fatal */ }
     }
 
-    // Step 1: Pull messages (using server_seq for filtering)
-    const since_seq = getLastRead(stateDir, memberId);
+    // Step 1: Pull messages (v4.0: using timestamp-based filtering)
+    const since_ts = getLastRead(stateDir, memberId);
     const limit = Math.min(config.max_messages_per_poll || 50, 20);
-    const msgRes = await apiCall(config, 'GET', `/chat/messages?since_seq=${since_seq}&limit=${limit}`);
+    const msgRes = await apiCall(config, 'GET', `/chat/messages?since=${since_ts}&limit=${limit}`);
 
     if (!msgRes.ok) {
       if (verbose) console.error(`❌ poll failed: ${msgRes.status}`);
@@ -254,12 +254,12 @@ async function main() {
     // Step 2: Filter messages from others (not my own)
     const fromOthers = messages.filter(msg => String(msg.sender) !== String(memberId));
 
-    // Compute last_seq: use max server_seq across ALL messages (robust against ordering issues)
-    const maxSeq = messages.reduce((mx, m) => {
-      const s = parseInt(m.server_seq);
-      return (!isNaN(s) && s > mx) ? s : mx;
+    // Compute last_read: use max msg_id timestamp across ALL messages
+    const maxTs = messages.reduce((mx, m) => {
+      const ts = parseInt(m.msg_id) || 0;
+      return (ts > mx) ? ts : mx;
     }, 0);
-    const lastVal = maxSeq > 0 ? String(maxSeq) : (messages[messages.length - 1]?.msg_id || since_seq);
+    const lastVal = maxTs > 0 ? String(maxTs) : since_ts;
 
     if (fromOthers.length === 0) {
       // Only my own messages - advance last_read immediately
