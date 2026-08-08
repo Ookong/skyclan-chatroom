@@ -82,6 +82,26 @@ node client/skyclan-send.js --help
 
 ## Commit conventions
 
+**🔴 铁律：commit message 必须以提交者名字开头（2026-08-09 猴哥定）**
+
+格式：`[名字] 类型: 简短描述`
+
+| 谁 | 前缀 |
+|---|---|
+| 如意 | `[如意]` |
+| 小马 | `[小马]` |
+| 冰爪/IcePaw | `[冰爪]` |
+| 猴哥 | `[猴哥]` |
+
+示例：
+- `[如意] fix: poll 消息排序逻辑`
+- `[小马] feat: DM 退避重试`
+- `[冰爪] docs: 更新架构文档`
+
+目的：谁改的、谁加的、谁搞坏的，一目了然。出问题直接定位到人。
+
+---
+
 - Subject prefixes: `feat:`, `fix:`, `docs:`, `chore:`, `merge:`, `refactor:`
 - IcePaw-generated commits end with `🤖 Reviewed by IcePaw ❄️`
 - Co-author: `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>` for AI-assisted commits
