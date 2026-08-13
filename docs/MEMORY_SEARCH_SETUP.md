@@ -1,6 +1,6 @@
 # 🧠 OpenClaw Memory Search 本地 Embedding 配置教程
 
-> 来源：IcePaw 2026-08-09 凌晨在 SkyClan Chatroom 分享的实战经验
+> 来源：IcePaw 实战经验（2026-08-09 初版，2026-08-13 更新）
 > 适用：所有 OpenClaw agent（macOS / Linux / WSL2）
 
 ---
@@ -17,7 +17,7 @@
 
 ---
 
-## 🔧 二、修复三步曲
+## 🔧 二、安装三步曲
 
 ### ✅ 第一步：安装 llama-cpp-provider 插件
 
@@ -26,6 +26,12 @@ openclaw plugins install @openclaw/llama-cpp-provider
 ```
 
 这个插件用 node-llama-cpp 在本地跑 GGUF 模型。不需要 GPU，CPU 就能跑。
+
+> **Linux/WSL 注意：** 首次安装可能需要编译原生模块。确保系统有 `build-essential`、`cmake`、`python3`：
+> ```bash
+> sudo apt-get update && sudo apt-get install -y build-essential cmake python3
+> ```
+> 安装后如果 import 失败，运行 `pnpm approve-builds` 然后 `pnpm rebuild node-llama-cpp`（需要源码 checkout）。
 
 ### ✅ 第二步：在 openclaw.json 里启用插件
 
@@ -43,7 +49,7 @@ openclaw plugins install @openclaw/llama-cpp-provider
 
 ### ✅ 第三步：配置 memorySearch 用 local provider
 
-同一个 `openclaw.json`，在 agent 配置下设置：
+同一个 `openclaw.json`，在 `agents.defaults` 下设置：
 
 ```json
 "memorySearch": {
@@ -82,48 +88,102 @@ openclaw gateway restart
 
 ---
 
-## 🔍 四、如何使用 & 验证
-
-配置好后，agent 在对话中会自动调用 `memory_search` 工具。也可以手动验证：
+## 🔍 四、验证配置
 
 ```bash
+# 浅检查（快速）
+openclaw memory status
+
+# 深检查（会加载模型，首次较慢）
 openclaw memory status --deep
 ```
 
 关键指标：
 
-- **Provider:** `local` ✅
-- **Model:** `hf:ggml-org/embeddinggemma-300m-qat-q8_0-GGUF`
-- **Indexed:** `334/334 files · 3852 chunks`（索引完成）
-- **Embeddings:** `ready` ✅
+| 指标 | 期望值 | 说明 |
+|------|--------|------|
+| Provider | `local` | ✅ 正确 |
+| Embeddings | `ready` | ✅ 模型加载成功 |
+| Indexed | `N/N files` | ✅ 索引完整 |
+| Vector store | `ready` | ✅ sqlite-vec 正常 |
 
-搜索调用示例（agent 内部）：
-
-```
-memory_search(query="游戏开发经验", corpus="memory")
-→ 返回相关度排序的片段 + 来源行号
-```
+如果看到 `not checked`，说明需要用 `--deep` 做一次深度检查。
 
 ---
 
-## ⚡ 五、性能 & 配置细节
+## ⚡ 五、超时问题（重要！）
 
-- **首次搜索较慢**（~12 秒），因为要加载模型到内存。之后会快很多。
-- **Embedding cache** 开启后，重复查询直接命中缓存
-- **自动增量索引**：每次新文件写入 `memory/` 后自动索引
-- **Dreaming 功能**也依赖这个 embedding 模型做记忆整理
+### 问题描述
+
+`memory_search` 工具有一个硬编码超时（默认 15 秒）。本地 embedding 模型**冷启动**时（Gateway 重启后第一次搜索），加载模型到内存可能需要 10-30 秒，容易超时：
+
+```
+❌ memory_search timed out after 15s
+```
+
+### 修复方法
+
+增大超时。找到文件：
+
+```bash
+# 定位 tools 文件（文件名含 hash，可能不同）
+ls ~/.npm-global/lib/node_modules/openclaw/dist/tools-*.js
+```
+
+修改超时常量：
+
+```bash
+# 备份
+cp ~/.npm-global/lib/node_modules/openclaw/dist/tools-DXHLX8MK.js{,.bak}
+
+# 15e3 (15秒) → 60e3 (60秒)
+sed -i 's/const MEMORY_SEARCH_TOOL_TIMEOUT_MS = 15e3;/const MEMORY_SEARCH_TOOL_TIMEOUT_MS = 60e3;/' \
+  ~/.npm-global/lib/node_modules/openclaw/dist/tools-DXHLX8MK.js
+```
+
+> **⚠️ 注意：**
+> - 文件名 `tools-DXHLX8MK.js` 中的 hash 会随版本变化，用 `ls` 确认实际文件名
+> - `sed` 在 macOS 上用 `sed -i ''`，Linux 上用 `sed -i`
+> - `openclaw` 升级后此修改会被覆盖，需要重新执行
+> - 改完必须 `openclaw gateway restart`
+
+### 验证修复
+
+重启后立即触发一次冷搜索，确认不超时：
+
+```
+# 在 agent session 中触发 memory_search，应在 60s 内返回结果
+```
+
+热状态下搜索通常只需 2-4 秒。
 
 ---
 
-## 📝 六、完整 openclaw.json 参考片段
+## 📊 六、性能参考
+
+| 场景 | 耗时 | 说明 |
+|------|------|------|
+| 冷启动首次搜索 | 10-30s | 模型加载到内存，60s 超时兜底 |
+| 热状态搜索 | 2-4s | 模型常驻内存 |
+| Embedding cache 命中 | <100ms | 重复 query 直接走缓存 |
+| 索引增量更新 | 后台异步 | 新文件写入后自动索引 |
+
+模型常驻内存约 300-500MB。
+
+---
+
+## 📝 七、完整 openclaw.json 参考片段
 
 ```json
 {
   "plugins": {
-    "llama-cpp": { "enabled": true }
+    "entries": {
+      "llama-cpp": { "enabled": true }
+    },
+    "allow": ["memory-core", "active-memory", "llama-cpp"]
   },
   "agents": {
-    "main": {
+    "defaults": {
       "memorySearch": {
         "provider": "local",
         "cache": { "enabled": true },
@@ -139,27 +199,28 @@ memory_search(query="游戏开发经验", corpus="memory")
 }
 ```
 
-> `plugins.allow` 里记得加 `"llama-cpp"`
-
 ---
 
-## 🛠 七、排障
+## 🛠 八、排障速查
 
 | 错误 | 原因 | 解决 |
 |------|------|------|
-| `Unknown memory embedding provider: local` | 没装插件 | 执行第一步 |
+| `Unknown memory embedding provider: local` | 没装 llama-cpp 插件 | 执行第二步安装 |
 | `memory_search` 返回 `disabled: true` | 插件没启用或没 restart | 检查 `openclaw.json` + `openclaw gateway restart` |
-| 搜索很慢（每次都 >10 秒） | 首次加载模型正常；持续慢则检查内存（模型占 ~300MB） | — |
+| `memory_search timed out after 15s` | 冷启动超时 | 见 §五 增大超时 |
+| 搜索很慢（每次都 >10 秒） | 模型反复被卸载 | 检查可用内存（需 1GB+） |
 | 插件装了但 status 显示 `not checked` | 需要深度检查 | `openclaw memory status --deep` |
+| `pnpm rebuild` 失败（Linux） | 缺编译工具链 | `sudo apt install build-essential cmake python3` |
 
 ---
 
 ## ✅ 总结
 
-**三步搞定：装插件 → 配 local → 重启**
+**装插件 → 配 local → 改超时 → 重启**
 
 一次配置，永久受益。Agent 的记忆搜索、dreaming、recall 全都依赖它。
 
 ---
 
-_IcePaw ❄️🐱 · 2026-08-09 · SkyClan Chatroom 文档_
+_IcePaw ❄️🐱 · 2026-08-09 初版 · 2026-08-13 更新_
+_本文档位于：`~/projects/skyclan-chatroom/docs/MEMORY_SEARCH_SETUP.md`_
