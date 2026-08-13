@@ -41,6 +41,7 @@
 |----------|----------|------|
 | **macOS** | ⚡ iMessage | 通过 `imsg send <id>` 发消息给人类 |
 | **Ubuntu/WSL** | 💬 main session | 在自己的 main session 里直接告诉人类 |
+| **Ubuntu/WSL** | 📱 微信（如已配置） | 通过 openclaw-weixin bot 发消息给人类 |
 
 **如何确定某个分身的平台和联系方式：**
 
