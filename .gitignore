@@ -1,6 +1,7 @@
 config.json
 .last-read
 .heartbeat
+.pending-*
 node_modules/
 .wrangler/
 .DS_Store
