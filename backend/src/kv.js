@@ -239,33 +239,6 @@ export async function getMemberByToken(env, token) {
   return memberId;
 }
 
-/**
- * Get the timestamp of the last message sent by any of the given members.
- * Used by /chat/stale-messages to check if a member replied after a @mention.
- * Returns max unix_ms of any of the listed members' sent messages, or null.
- */
-export async function getMemberLastReply(env, memberIds) {
-  const ids = Array.isArray(memberIds) ? memberIds : [memberIds];
-  if (ids.length === 0) return null;
-
-  const list = await env.TPG_KV.list({ prefix: `${PREFIX}msg:`, limit: 500 });
-  let maxTs = null;
-
-  // Iterate newest-first
-  for (let i = list.keys.length - 1; i >= 0; i--) {
-    const raw = await env.TPG_KV.get(list.keys[i].name);
-    if (!raw) continue;
-    let msg;
-    try { msg = JSON.parse(raw); } catch { continue; }
-    if (!ids.includes(msg.sender)) continue;
-    const ts = parseInt(msg.msg_id.split('_')[0]) || 0;
-    if (ts > 0 && (maxTs === null || ts > maxTs)) {
-      maxTs = ts;
-    }
-  }
-  return maxTs;
-}
-
 // --- Helpers ---
 
 function generateTokenHex() {

@@ -16,7 +16,6 @@
  *   GET  /chat/messages        - 拉取消息（since timestamp）
  *   POST /chat/heartbeat       - 更新在线状态
  *   POST /chat/read            - 标记消息已读
- *   GET  /chat/stale-messages   - 查询未回复的 @ 消息（cron 失败人工兜底）
  */
 
 import { authenticate } from './auth.js';
@@ -26,7 +25,6 @@ import {
   getMember,
   getMemberList,
   updateLastSeen,
-  getMemberLastReply,
   MEMBER_ID_RE,
 } from './kv.js';
 
@@ -153,49 +151,6 @@ export async function handleChat(request, env, ctx) {
       }
       // Read tracking is optional in MVP
       return jsonResponse({ ok: true });
-    }
-
-    // GET /chat/stale-messages?minutes=<n>
-    // 列出「已发送 N 分钟、@提及某个 member 但该 member 还没回复」的消息
-    // 用于 cron 失败后人工兜底（admin/IcePaw 巡检用）
-    if (path === '/chat/stale-messages' && method === 'GET') {
-      const minutes = parseInt(url.searchParams.get('minutes') || '15');
-      const targetMember = url.searchParams.get('member_id'); // 可选，过滤某个 member
-      const staleMs = minutes * 60 * 1000;
-      const thresholdTs = Date.now() - staleMs;
-
-      const allMsgs = await getMessages(env, 0, 100, auth.member_id);
-      const stale = [];
-
-      for (const msg of allMsgs) {
-        const msgTs = parseInt(msg.msg_id.split('_')[0]) || 0;
-        if (msgTs >= thresholdTs) continue; // 不够老
-
-        // 是 @all 或者 @指定的 member
-        const mentions = msg.mentions || [];
-        const targets = [];
-        if (mentions.includes('all')) targets.push('all');
-        if (targetMember && mentions.includes(targetMember)) targets.push(targetMember);
-        if (!targetMember && mentions.length > 0) {
-          for (const m of mentions) if (m !== 'all' && m !== msg.sender) targets.push(m);
-        }
-        if (targets.length === 0) continue;
-
-        // 检查目标 member 在该消息之后是否发过消息
-        const targetLastReply = await getMemberLastReply(env, targets);
-        if (targetLastReply && targetLastReply >= msgTs) continue; // 已回复
-
-        stale.push({
-          msg_id: msg.msg_id,
-          sender: msg.sender,
-          sender_name: msg.sender_name,
-          content: msg.content.slice(0, 200),
-          mentioned_members: targets,
-          minutes_ago: Math.round((Date.now() - msgTs) / 60000),
-        });
-      }
-
-      return jsonResponse({ ok: true, count: stale.length, stale });
     }
 
     // 404
