@@ -1,4 +1,10 @@
-# 🧠 OpenClaw Memory Search 本地 Embedding 配置教程
+> **状态：⚠️ 历史归档（2026-08-16 起退役）**
+> 本地 llama-cpp 方案已退役。当前全家默认方案是智谱云端 embedding，见 [`MEMORY_SEARCH_CLOUD.md`](./MEMORY_SEARCH_CLOUD.md)。
+> 本文仅作历史参考 / 应急回退手册保留。
+
+---
+
+# 🧠 OpenClaw Memory Search 本地 llama-cpp 配置教程
 
 > 来源：IcePaw 实战经验（2026-08-09 初版，2026-08-13 更新）
 > 适用：所有 OpenClaw agent（macOS / Linux / WSL2）
