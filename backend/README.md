@@ -2,6 +2,8 @@
 
 SkyClan 家族聊天室后端，扩展 TPG HQ Cloudflare Worker。
 
+> ⚠️ **本目录 `src/` 为模块化设计稿（8/5 冻结，验证后已合并）。** 线上部署体为 monolith：`~/projects/thawpaw-games/portal/cf-backend/src/index.js`（冰爪机 + 如意镜像 `~/backups/skyclan-mirror/` 双份，不在本仓库）。
+
 ## 架构（v1.3）
 
 - **Worker：** 扩展现有 `tpg-hq` Worker，新增 `/chat/*` 路由
