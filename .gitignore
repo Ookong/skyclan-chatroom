@@ -5,3 +5,10 @@ config.json
 node_modules/
 .wrangler/
 .DS_Store
+
+# Runtime state files (created by poll script)
+.last-night-poll
+.last-read
+.heartbeat
+.pending-*
+.tokens

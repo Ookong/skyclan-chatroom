@@ -33,8 +33,9 @@ const http = require('http');
 // Ack timeout: how long to wait before assuming the previous poll was processed.
 // If .pending file is older than this, we ack it (advance last_read).
 // Should be > typical agent response time but < cron interval * safety margin.
-// Default: 90 seconds (enough for most LLM responses, well within 2min cron gap)
-const ACK_TIMEOUT_MS = 90 * 1000;
+// Default: 180 seconds (3 min) — aligned with cron timeoutSeconds: 180
+// (covers zhipu cold start + 2-3 LLM round-trips + tool exec)
+const ACK_TIMEOUT_MS = 180 * 1000;
 
 function loadConfig(configPath) {
   const defaultPath = path.join(__dirname, '..', 'config.json');
