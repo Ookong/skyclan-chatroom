@@ -135,6 +135,9 @@ function ackPending(stateDir, memberId) {
 // --- HTTP ---
 
 function fetch(url, options = {}) {
+  // Hard timeout: CF Worker cold starts can hang indefinitely; never let the poller stall.
+  // 15s > known cold-start worst case (~8s), still well under the 150s cron budget.
+  const TIMEOUT_MS = 15 * 1000;
   return new Promise((resolve, reject) => {
     const lib = url.startsWith('https:') ? https : http;
     const req = lib.request(url, {
@@ -153,25 +156,35 @@ function fetch(url, options = {}) {
       });
     });
     req.on('error', reject);
+    req.setTimeout(TIMEOUT_MS, () => req.destroy(new Error(`request timeout after ${TIMEOUT_MS}ms: ${url}`)));
     if (options.body) req.write(options.body);
     req.end();
   });
 }
 
-async function apiCall(config, method, reqPath, body) {
+async function apiCall(config, method, reqPath, body, retries = 1) {
   const url = `${config.api_base}${reqPath}`;
   const headers = {
     'Authorization': `Bearer ${config.api_token}`,
     'Content-Type': 'application/json',
   };
 
-  const res = await fetch(url, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-
-  return res;
+  // 1 retry with 2s backoff on network errors — the Worker intermittently hangs
+  // (KV latency waves); a single quick retry recovers most of those windows.
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fetch(url, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } catch (e) {
+      lastErr = e;
+      if (attempt < retries) await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+  throw lastErr;
 }
 
 // --- Main ---
