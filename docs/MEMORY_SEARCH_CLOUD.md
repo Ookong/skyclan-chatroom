@@ -1,28 +1,11 @@
 # ☁️ Memory Search 云端 Embedding（智谱 embedding-3）— 全家默认方案
 
 > **状态：✅ 官方首选（2026-08-16 猴哥指令）**
-> 本地 llama-cpp 方案已退役，仅留 [`MEMORY_SEARCH_SETUP.md`](./MEMORY_SEARCH_SETUP.md) 作历史归档。
-> 新成员 / 新机器 onboarding 时，**直接按本文配置**，不再装本地模型。
+> 新成员 / 新机器 onboarding 时，**直接按本文配置**。
 
 ---
 
-## 📋 一、为什么云端转正
-
-| 痛点（本地方案） | 云端表现（实测） |
-|---|---|
-| 冷启动 10-30s，容易撞 15s 硬超时 | 首次调用 0.3s |
-| 热搜 ~3.5s，偶发 27s+ 超时 | 全程 < 1.5s |
-| 常驻 300-500MB 内存，worker 可能卡死（CPU 578%） | 零常驻内存 |
-| 350 文件索引，vector search 一 paused 就退化 FTS | 365 文件 / 4819 chunks 稳定索引 |
-
-**实测数据（2026-08-16，MK-MacBook）：**
-- embedding 调用延迟：0.27s（HTTP 200，2048 维）
-- 全量重建索引（4819 chunks）：~7 分钟
-- 切换后搜索：语义命中正常，`Vector dims: 2048`，`Dirty: no`
-
----
-
-## 🧠 二、原理：用内置 `openai-compatible` provider
+## 🧠 一、原理：用内置 `openai-compatible` provider
 
 OpenClaw 内置 provider id `openai-compatible`，走 OpenAI 标准 `/v1/embeddings` 端点，可指向任何兼容服务。
 
@@ -51,7 +34,7 @@ OpenClaw 内置 provider id `openai-compatible`，走 OpenAI 标准 `/v1/embeddi
 
 ---
 
-## 🔧 三、配置步骤
+## 🔧 二、配置步骤
 
 ### 1. 准备智谱 API Key
 [智谱开放平台](https://open.bigmodel.cn/) 注册 → 生成 API Key。embedding-3 免费额度对个人足够。
@@ -84,7 +67,7 @@ curl -s http://localhost:18789/health   # 期待 {"ok":true,"status":"live"}
 
 ### 4. 重建索引 ⚠️ 必做
 
-切 provider 后旧索引（本地 768 维）不兼容，必须 `--force` 重建，否则 vector search 一直 paused、退化为关键词搜索：
+切 provider 后旧索引维度不兼容（embedding-3 为 2048 维），必须 `--force` 重建，否则 vector search 一直 paused、退化为关键词搜索：
 
 ```bash
 openclaw memory index --force --agent main
@@ -117,26 +100,7 @@ openclaw memory search "任意语义查询" --agent main   # 应返回带评分�
 
 ---
 
-## 🧹 四、退役本地 llama-cpp（老机器迁移时）
-
-如果该机器之前配过本地方案：
-
-```bash
-# 1. 禁用插件
-openclaw plugins disable llama-cpp
-openclaw gateway restart   # 使禁用生效
-
-# 2. 清理卡死的本地 worker（如有）
-ps aux | grep memory-core-local-embedding-worker | grep -v grep \
-  | awk '{print $2}' | xargs -r kill -9
-
-# 3.（可选）删除 GGUF 模型释放磁盘（~313MB）
-# 位置见 MEMORY_SEARCH_SETUP.md 历史归档
-```
-
----
-
-## ⚠️ 五、踩坑记录
+## ⚠️ 三、踩坑记录
 
 ### 坑 1：zai 插件不支持 embedding
 `openclaw-zai-provider` 的 modelCatalog 只有 GLM LLM。直接 `provider: "zai"` 报"找不到 embedding 模型"。
@@ -149,12 +113,9 @@ ps aux | grep memory-core-local-embedding-worker | grep -v grep \
 ### 坑 3：切 provider 不 reindex → 静默退化
 不重建索引时 `Vector search: paused until memory is rebuilt`，搜索退回 FTS-only（关键词），看起来"能用"但语义搜索失效。**必须 `--force`。**
 
-### 坑 4：残留本地 worker 占内存
-即使切了配置，已启动的 llama-cpp worker 不自动退出。禁用插件 + 重启网关 + 手动 kill 三步走。
-
 ---
 
-## 📊 六、性能与成本
+## 📊 四、性能与成本
 
 | 场景 | 实测（智谱 embedding-3） |
 |---|---|
@@ -165,15 +126,15 @@ ps aux | grep memory-core-local-embedding-worker | grep -v grep \
 
 ---
 
-## 🔄 七、升级历史
+## 🔄 五、升级历史
 
 | 日期 | 事件 |
 |---|---|
 | 2026-08-15 | 龙井配置云端方案并沉淀文档（首版） |
-| 2026-08-16 01:00 | MK-MacBook（冰爪）按本文切换：验证 key → 改配置 → 重启 → 强制重建 → 禁用 llama-cpp |
-| 2026-08-16 01:10 | 猴哥指令：本地方案退役，云端为全家默认，写入 onboarding |
+| 2026-08-16 01:00 | MK-MacBook（冰爪）按本文切换：验证 key → 改配置 → 重启 → 强制重建 |
+| 2026-08-16 01:10 | 猴哥指令：云端为全家默认，写入 onboarding |
+| 2026-08-17 | 删除本地 llama-cpp 历史归档文档，本文只保留云端方案 |
 
 ---
 
 _本文档位于：`~/projects/skyclan-chatroom/docs/MEMORY_SEARCH_CLOUD.md`_
-_历史归档（本地 llama-cpp 方案）：[`MEMORY_SEARCH_SETUP.md`](./MEMORY_SEARCH_SETUP.md)_
