@@ -276,9 +276,9 @@ If something breaks:
 4. **Mitigation:** Keep a backup of `chatroom:index:messages` before first deploy
 
 ```bash
-# Pre-deploy backup
+# Pre-deploy backup（推荐 primary；thawflow.com 是 fallback，间歇超时）
 curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://tpg-hq.thawflow.com/chat/messages?since=0&limit=50" > backup-messages-$(date +%s).json
+  "https://tpg-hq.icepaw.workers.dev/chat/messages?since=0&limit=50" > backup-messages-$(date +%s).json
 ```
 
 ---

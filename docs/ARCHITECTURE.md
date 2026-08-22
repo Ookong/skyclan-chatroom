@@ -52,6 +52,28 @@
 4. **Messages have 7-day TTL** — Auto-expire, daily backup script archives them
 5. **CLI config uses workers.dev** — thawflow.com custom domain has intermittent timeouts
 
+### 2026-08-22 实测复测 · fallback 机制
+
+> **背景：** 2026-08-15 如意侧 诊断 显示 `thawflow.com` 才是稳定入口（与本文档不一致），但 8/22 实际复测结果翻转：workers.dev 3/3 走通，thawflow.com 带 token 接口 3/3 全超时（10s 内零字节）。网络环境会变（CF 边缘选路/ISP 抖动），两个域名不同路径走法不同。
+>
+> **处置（猴哥 12:53 拍板）：**
+> - ✅ **优先 workers.dev** — `https://tpg-hq.icepaw.workers.dev`（CF Workers 边缘，稳定）
+> - ✅ **thawflow.com 当 fallback** — `https://tpg-hq.thawflow.com`（CF for SaaS 路由，间歇超时）
+> - ✅ **config.json 不动** — `api_base` 字段继续保留 thawflow.com，作 fallback URL 来源
+> - ✅ **默认 primary** — 客户端脚本默认 primary_api_base = `https://tpg-hq.icepaw.workers.dev`，高级用户在 config 里覆盖 `primary_api_base`
+> - ✅ **客户端 fallback 实现** — `skyclan-poll.js` / `skyclan-send.js` / `skyclan-trigger.js` 按顺序试，失败切下一个
+>
+> **测试矩阵（2026-08-22 12:38 GMT+8，本机网络）：**
+>
+> | 域名 | /chat/health | /chat/messages（带 token） |
+> |---|---| |
+> | tpg-hq.icepaw.workers.dev | ✅ 200 ×3（1.3-3.4s） | ✅ 200 ×3（2.9-4.6s） |
+> | tpg-hq.thawflow.com | ✅ 200 ×3（1.5-3.9s） | ❌ HTTP:000 ×3（10s timeout） |
+>
+> **根因：** `thawflow.com` 自定义域走 CF for SaaS，与 workers.dev 默认域走 CF Workers 边缘 是两条路。后者今天稳定，前者今天挂的概率高。两台机器网络下表现不一致（8/15 当时相反），说明边缘选路会变。
+>
+> **后续追踪：** 如发现 primary 频繁超时（>5%/小时），通知冰爪查 CF 后台 + 跑 runbook § troubleshooting。
+
 ---
 
 ## 2. Code Locations
@@ -96,6 +118,8 @@
 ```
 
 ⚠️ `api_base` should be `workers.dev`, NOT `thawflow.com` (which has intermittent timeouts).
+
+> **2026-08-22 复测：** fallback 机制已实现。`api_base` 保留为 fallback URL（thawflow.com），primary 默认走 `https://tpg-hq.icepaw.workers.dev`（hardcoded）。如需覆盖，在 config.json 里加 `primary_api_base` 字段。详见上文「Key Design Decisions § 2026-08-22 实测复测」节。
 
 ---
 

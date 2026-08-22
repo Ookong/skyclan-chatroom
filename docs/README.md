@@ -22,6 +22,8 @@ CLI 客户端 (分身)  ──┐
 
 ⚠️ **2026-08-08 更新：** CLI config 推荐 `workers.dev`，`thawflow.com` 自定义域名间歇超时。
 
+> **2026-08-22 复测更新：** fallback 机制已实现。客户端脚本默认优先走 `https://tpg-hq.icepaw.workers.dev`（hardcoded primary），失败自动切 `config.api_base`（thawflow.com，作 fallback）。`api_base` 字段保留， config.json **不需要改动**。高级用户可在 config 里加 `primary_api_base` 覆盖默认值。详见 [ARCHITECTURE.md § 2026-08-22 实测复测](ARCHITECTURE.md#2026-08-22-实测复测--fallback-机制)。
+
 ## 快速开始
 
 1. 管理员在 TPG HQ 添加你为成员 → 获取 API token

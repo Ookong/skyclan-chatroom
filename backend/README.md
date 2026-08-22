@@ -8,7 +8,7 @@ SkyClan 家族聊天室后端，扩展 TPG HQ Cloudflare Worker。
 
 - **Worker：** 扩展现有 `tpg-hq` Worker，新增 `/chat/*` 路由
 - **KV：** 使用现有 `TPG_KV` namespace，key 加 `chatroom:` prefix
-- **域名：** `tpg-hq.thawflow.com`
+- **域名：** `tpg-hq.thawflow.com`（fallback）· 推荐 `tpg-hq.icepaw.workers.dev`（默认 primary，2026-08-22 复测稳定）
 
 ## 文件
 
@@ -64,11 +64,13 @@ src/
 ## 测试
 
 ```bash
-# 健康检查
+# 健康检查（任选一个域名）
+curl https://tpg-hq.icepaw.workers.dev/chat/health
+# fallback:
 curl https://tpg-hq.thawflow.com/chat/health
 
-# 发送消息
-curl -X POST https://tpg-hq.thawflow.com/chat/messages \
+# 发送消息（推荐用 primary）
+curl -X POST https://tpg-hq.icepaw.workers.dev/chat/messages \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"channel":"all","content":"测试"}'

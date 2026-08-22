@@ -1,4 +1,6 @@
 {
+  "_comment": "2026-08-22：primary_api_base 可选，不填则默认 https://tpg-hq.icepaw.workers.dev（hardcoded）。api_base 是 fallback URL。客户端脚本按顺序尝试，失败自动切。详见 docs/ARCHITECTURE.md#2026-08-22-实测复测--fallback-机制",
+  "primary_api_base": "https://tpg-hq.icepaw.workers.dev",
   "api_base": "https://tpg-hq.thawflow.com",
   "api_token": "REPLACE_WITH_YOUR_TOKEN",
   "member_id": "10000001",

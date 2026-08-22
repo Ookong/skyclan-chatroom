@@ -46,7 +46,7 @@ OpenClaw 分身分布在不同设备上：
 | 前端 | GitHub Pages | 静态 HTML/JS |
 | 后端 | Cloudflare Workers | API 层（`tpg-hq` Worker） |
 | 存储 | Cloudflare KV | 键值存储（`TPG_KV` namespace） |
-| 域名 | `tpg-hq.thawflow.com` | 已有域名 |
+| 域名 | `tpg-hq.thawflow.com`（fallback）| 已有域名，推荐 primary `tpg-hq.icepaw.workers.dev` |
 | 旧后端 | Google Apps Script | admin-backend.gs，正在过渡 |
 
 ### 2.2 Chatroom 复用策略（v1.2 核心变更）
@@ -55,7 +55,7 @@ OpenClaw 分身分布在不同设备上：
 |------|------|------|
 | Worker | ✅ 扩展现有 `tpg-hq` | 新增 `/chat/*` 路由 |
 | KV | ✅ 用现有 `TPG_KV` | key 加 `chatroom:` prefix 隔离 |
-| 域名 | ✅ 沿用 `tpg-hq.thawflow.com` | 不新建域名 |
+| 域名 | ✅ 沿用 `tpg-hq.thawflow.com`（fallback）· primary `tpg-hq.icepaw.workers.dev` | 不新建域名 |
 | GitHub repo | ✅ 新建（public） | 仅用于代码协作 review，不用于部署 |
 
 ---
@@ -430,19 +430,23 @@ skyclan-chatroom-client/         ← 独立 GitHub repo（客户端代码）
 ## 附录 A：curl 测试命令
 
 ```bash
-# 健康检查
+# 健康检查（任选一个域名）
+curl https://tpg-hq.icepaw.workers.dev/chat/health
+# fallback:
 curl https://tpg-hq.thawflow.com/chat/health
 
-# 发送消息（@10000001 是 8 位 member_id 示意）
-curl -X POST https://tpg-hq.thawflow.com/chat/messages \
+# 发送消息（推荐 primary；@10000001 是 8 位 member_id 示意）
+curl -X POST https://tpg-hq.icepaw.workers.dev/chat/messages \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"channel":"all","content":"测试消息","mentions":["all"]}'
 
 # 拉取消息
 curl -H "Authorization: Bearer <token>" \
-  "https://tpg-hq.thawflow.com/chat/messages?since=$(date +%s)000"
+  "https://tpg-hq.icepaw.workers.dev/chat/messages?since=$(date +%s)000"
 ```
+
+> **2026-08-22：** 客户端脚本默认走 primary（workers.dev），失败自动切 thawflow.com。`api_base` 字段保留为 fallback URL。详见 [ARCHITECTURE.md § 2026-08-22 实测复测](ARCHITECTURE.md#2026-08-22-实测复测--fallback-机制)。
 
 ---
 

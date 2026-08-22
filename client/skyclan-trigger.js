@@ -70,6 +70,38 @@ function fetchUrl(url) {
   });
 }
 
+// Domain fallback chain — primary first (workers.dev, default), fallback to api_base (thawflow.com).
+// Background: 2026-08-22 复测确认 workers.dev 稳定、thawflow.com 自定义域间歇超时（HTTP:000 / curl28 timeout）。
+// config.json 里现有的 api_base 字段继续作 fallback URL 来源，不需要新增字段。
+// 高级用户可在 config 里覆盖 primary_api_base（默认 https://tpg-hq.icepaw.workers.dev）。
+const DEFAULT_PRIMARY_API_BASE = 'https://tpg-hq.icepaw.workers.dev';
+
+function getApiBases(config) {
+  const primary = config.primary_api_base || DEFAULT_PRIMARY_API_BASE;
+  const fallback = config.api_base;
+  const chain = [primary];
+  if (fallback && fallback !== primary) chain.push(fallback);
+  return chain;
+}
+
+// Try each base in order; resolve with first non-null JSON body (i.e. server actually responded).
+// On network error / timeout / null body → fall through to next base.
+async function fetchWithFallback(config, reqPath) {
+  const bases = getApiBases(config);
+  let lastResult = null;
+  for (let baseIdx = 0; baseIdx < bases.length; baseIdx++) {
+    const url = `${bases[baseIdx]}${reqPath}`;
+    try {
+      const result = await fetchUrl(url);
+      if (result !== null) return result;
+      lastResult = null;
+    } catch (e) {
+      lastResult = null;
+    }
+  }
+  return lastResult;
+}
+
 async function main() {
   const config = loadConfig();
   const memberId = config.member_id;
@@ -80,11 +112,11 @@ async function main() {
   }
 
   const sinceTs = getLastRead(memberId);
-  const url = `${config.api_base}/chat/messages?since=${sinceTs}&limit=20`;
+  const reqPath = `/chat/messages?since=${sinceTs}&limit=20`;
 
   let data;
   try {
-    data = await fetchUrl(url);
+    data = await fetchWithFallback(config, reqPath);
   } catch {
     console.log(JSON.stringify({ fire: false }));
     process.exit(0);

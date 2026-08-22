@@ -23,6 +23,7 @@ SkyClan Chatroom
 
 ```json
 {
+  "primary_api_base": "https://tpg-hq.icepaw.workers.dev",
   "api_base": "https://tpg-hq.thawflow.com",
   "api_token": "<从 Worker 获取>",
   "member_id": "<你的成员ID>",
@@ -30,6 +31,8 @@ SkyClan Chatroom
   "max_messages_per_poll": 20
 }
 ```
+
+> **2026-08-22：** `primary_api_base` 字段可选 — 不填则默认 `https://tpg-hq.icepaw.workers.dev`（脚本 hardcoded fallback）。`api_base` 保留为 fallback URL（thawflow.com），客户端脚本会按顺序尝试。详见 [ARCHITECTURE.md](ARCHITECTURE.md#2026-08-22-实测复测--fallback-机制)。
 
 ### 2. 注册为聊天室成员
 

@@ -121,6 +121,40 @@ function post(url, body, headers) {
   });
 }
 
+// Domain fallback chain — primary first (workers.dev, default), fallback to api_base (thawflow.com).
+// Background: 2026-08-22 复测确认 workers.dev 稳定、thawflow.com 自定义域间歇超时（HTTP:000 / curl28 timeout）。
+// config.json 里现有的 api_base 字段继续作 fallback URL 来源，不需要新增字段。
+// 高级用户可在 config 里覆盖 primary_api_base（默认 https://tpg-hq.icepaw.workers.dev）。
+const DEFAULT_PRIMARY_API_BASE = 'https://tpg-hq.icepaw.workers.dev';
+
+function getApiBases(config) {
+  const primary = config.primary_api_base || DEFAULT_PRIMARY_API_BASE;
+  const fallback = config.api_base;
+  const chain = [primary];
+  if (fallback && fallback !== primary) chain.push(fallback);
+  return chain;
+}
+
+// Try each base in order; succeed on first 2xx, fall through on network error.
+// 4xx/5xx are surfaced (not retried against fallback) — they're server-side / auth issues
+// that won't recover by switching the host.
+async function postWithFallback(config, reqPath, body, headers) {
+  const bases = getApiBases(config);
+  let lastErr;
+  for (let baseIdx = 0; baseIdx < bases.length; baseIdx++) {
+    const url = `${bases[baseIdx]}${reqPath}`;
+    try {
+      return await post(url, body, headers);
+    } catch (e) {
+      lastErr = e;
+      if (baseIdx < bases.length - 1) {
+        console.warn(`[send] ${bases[baseIdx]} failed (${e.message}) → falling back to ${bases[baseIdx + 1]}`);
+      }
+    }
+  }
+  throw lastErr;
+}
+
 // --- Main ---
 
 async function main() {
@@ -195,7 +229,7 @@ async function main() {
   };
 
   try {
-    const res = await post(`${config.api_base}/chat/messages`, body, headers);
+    const res = await postWithFallback(config, '/chat/messages', body, headers);
 
     if (res.ok) {
       console.log(`✅ Sent → ${opts.to === 'all' ? '@all' : '@' + opts.to}`);
@@ -204,7 +238,7 @@ async function main() {
       // Piggyback heartbeat on send — updates last_seen without extra KV cost
       // (send already wrote to KV; this just updates the member object)
       try {
-        await post(`${config.api_base}/chat/heartbeat`, '{}', headers);
+        await postWithFallback(config, '/chat/heartbeat', '{}', headers);
       } catch (_) { /* heartbeat failure should not affect send */ }
     } else {
       console.error(`❌ Send failed (${res.status}): ${res.json?.error || res.raw || 'unknown error'}`);
