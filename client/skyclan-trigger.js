@@ -56,7 +56,7 @@ function checkPending(memberId) {
 function fetchUrl(url) {
   return new Promise((resolve, reject) => {
     const lib = url.startsWith('https:') ? https : http;
-    const req = lib.request(url, { method: 'GET', timeout: 8000 }, (res) => {
+    const req = lib.request(url, { method: 'GET', timeout: 8000, family: 4 }, (res) => {
       let body = '';
       res.on('data', (chunk) => body += chunk);
       res.on('end', () => {

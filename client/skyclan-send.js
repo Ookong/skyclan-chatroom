@@ -90,11 +90,18 @@ function loadConfig(configPath) {
 }
 
 // --- HTTP ---
+// Same hardening as skyclan-poll.js (2026-08-23 龙井 merged):
+// - family:4 — WSL2 IPv6 egress broken → Node AAAA-first hangs. Force IPv4.
+// - NO ALPN override: the http/1.1 ALPN workaround made hangs *worse* in
+//   8/22 field testing (kept default ALPN since).
+// - 15s hard timeout — a send must never hang the caller indefinitely.
+const SEND_TIMEOUT_MS = 15 * 1000;
 
 function post(url, body, headers) {
   return new Promise((resolve, reject) => {
     const lib = url.startsWith('https:') ? https : http;
-    const req = lib.request(url, { method: 'POST', headers }, (res) => {
+    const reqOpts = { method: 'POST', headers, family: 4 };
+    const req = lib.request(url, reqOpts, (res) => {
       let data = '';
       res.on('data', (chunk) => data += chunk);
       res.on('end', () => {
@@ -106,6 +113,9 @@ function post(url, body, headers) {
       });
     });
     req.on('error', reject);
+    req.setTimeout(SEND_TIMEOUT_MS, () => {
+      req.destroy(new Error(`send timeout after ${SEND_TIMEOUT_MS}ms: ${url}`));
+    });
     req.write(body);
     req.end();
   });

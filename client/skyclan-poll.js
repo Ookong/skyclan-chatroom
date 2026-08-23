@@ -134,16 +134,25 @@ function ackPending(stateDir, memberId) {
 
 // --- HTTP ---
 
-function fetch(url, options = {}) {
-  // Hard timeout: CF Worker cold starts can hang indefinitely; never let the poller stall.
-  // 15s > known cold-start worst case (~8s), still well under the 150s cron budget.
-  const TIMEOUT_MS = 15 * 1000;
+// Merged 2026-08-23 (龙井): upstream canonical fix (1596b0c — hard timeout +
+// retry, because CF Worker KV latency waves intermittently hang /chat/messages
+// with 25s+ hangs and late 401s) + WSL2 hardening from 8/22 field debug:
+// force IPv4 (WSL2 IPv6 egress broken → Node AAAA-first hangs), keep default
+// ALPN (the old http/1.1 ALPN workaround made hangs consistent), jittered
+// exponential backoff for transient edge flaps. Auth/4xx surface immediately.
+const REQUEST_TIMEOUT_MS = 15 * 1000; // 15s > known CF cold-start worst case (~8s), still well under the 180s cron budget.
+const MAX_RETRIES = 3;                // total attempts per call
+const BASE_BACKOFF_MS = 600;
+
+function fetchOnce(url, options = {}) {
   return new Promise((resolve, reject) => {
     const lib = url.startsWith('https:') ? https : http;
-    const req = lib.request(url, {
+    const reqOpts = {
       method: options.method || 'GET',
       headers: options.headers || {},
-    }, (res) => {
+      family: 4, // WSL2: IPv6 egress broken → Node tries AAAA first and hangs (ETIMEDOUT AggregateError). Force IPv4.
+    };
+    const req = lib.request(url, reqOpts, (res) => {
       let body = '';
       res.on('data', (chunk) => body += chunk);
       res.on('end', () => {
@@ -156,35 +165,55 @@ function fetch(url, options = {}) {
       });
     });
     req.on('error', reject);
-    req.setTimeout(TIMEOUT_MS, () => req.destroy(new Error(`request timeout after ${TIMEOUT_MS}ms: ${url}`)));
     if (options.body) req.write(options.body);
+    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+      req.destroy(new Error('request timeout after ' + REQUEST_TIMEOUT_MS + 'ms: ' + url));
+    });
     req.end();
   });
 }
 
-async function apiCall(config, method, reqPath, body, retries = 1) {
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function fetch(url, options = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      return await fetchOnce(url, options);
+    } catch (err) {
+      lastErr = err;
+      // Only retry transient network errors; surface auth/4xx immediately.
+      const transient = err && (
+        err.code === 'ETIMEDOUT' ||
+        err.code === 'ECONNRESET' ||
+        err.code === 'EAI_AGAIN' ||
+        err.code === 'ECONNREFUSED' ||
+        /timeout/i.test(String(err.message || ''))
+      );
+      if (!transient) throw err;
+      if (attempt < MAX_RETRIES - 1) {
+        const backoff = BASE_BACKOFF_MS * Math.pow(2, attempt) + Math.floor(Math.random() * 200);
+        await sleep(backoff);
+      }
+    }
+  }
+  throw lastErr || new Error('fetch failed after retries');
+}
+
+async function apiCall(config, method, reqPath, body) {
   const url = `${config.api_base}${reqPath}`;
   const headers = {
     'Authorization': `Bearer ${config.api_token}`,
     'Content-Type': 'application/json',
   };
-
-  // 1 retry with 2s backoff on network errors — the Worker intermittently hangs
-  // (KV latency waves); a single quick retry recovers most of those windows.
-  let lastErr;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      return await fetch(url, {
-        method,
-        headers,
-        body: body ? JSON.stringify(body) : undefined,
-      });
-    } catch (e) {
-      lastErr = e;
-      if (attempt < retries) await new Promise(r => setTimeout(r, 2000));
-    }
-  }
-  throw lastErr;
+  // Retries live inside fetch() — see note above.
+  return fetch(url, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
 }
 
 // --- Main ---
