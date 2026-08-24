@@ -121,18 +121,31 @@ function post(url, body, headers) {
   });
 }
 
-// Domain fallback chain — primary first (workers.dev, default), fallback to api_base (thawflow.com).
-// Background: 2026-08-22 复测确认 workers.dev 稳定、thawflow.com 自定义域间歇超时（HTTP:000 / curl28 timeout）。
-// config.json 里现有的 api_base 字段继续作 fallback URL 来源，不需要新增字段。
-// 高级用户可在 config 里覆盖 primary_api_base（默认 https://tpg-hq.icepaw.workers.dev）。
-const DEFAULT_PRIMARY_API_BASE = 'https://tpg-hq.icepaw.workers.dev';
+// Domain fallback chain — 2026-08-24 12:01 龙井 spec（冰爪实现，周三 review）：
+//   bases = [api_base, api_base_backup].filter(Boolean)
+// 顺序由 config 字段决定，每 host 保留 15s×3 退避（postWithFallback 内重试）。
+// 背景：双域名间歇抖动成常态——8/22 thawflow 自定义域挂 / 8/24 workers.dev 挂 3.5h。
+// 已知取舍：POST 非幂等，极端情况（写入成功但响应超时）重试可能双发；
+// 实测故障均为连接层（http=000 / curl28，请求未达服务器），双发风险远低于丢发风险，按 spec 执行。
+const MAX_RETRIES = 3;                // total attempts per host (timeout 15s, see SEND_TIMEOUT_MS above)
+const BASE_BACKOFF_MS = 600;
 
 function getApiBases(config) {
-  const primary = config.primary_api_base || DEFAULT_PRIMARY_API_BASE;
-  const fallback = config.api_base;
-  const chain = [primary];
-  if (fallback && fallback !== primary) chain.push(fallback);
-  return chain;
+  return [config.api_base, config.api_base_backup].filter(Boolean);
+}
+
+function isTransient(err) {
+  return err && (
+    err.code === 'ETIMEDOUT' ||
+    err.code === 'ECONNRESET' ||
+    err.code === 'EAI_AGAIN' ||
+    err.code === 'ECONNREFUSED' ||
+    /timeout/i.test(String(err.message || ''))
+  );
+}
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 // Try each base in order; succeed on first 2xx, fall through on network error.
@@ -143,13 +156,23 @@ async function postWithFallback(config, reqPath, body, headers) {
   let lastErr;
   for (let baseIdx = 0; baseIdx < bases.length; baseIdx++) {
     const url = `${bases[baseIdx]}${reqPath}`;
-    try {
-      return await post(url, body, headers);
-    } catch (e) {
-      lastErr = e;
-      if (baseIdx < bases.length - 1) {
-        console.warn(`[send] ${bases[baseIdx]} failed (${e.message}) → falling back to ${bases[baseIdx + 1]}`);
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        return await post(url, body, headers);
+      } catch (e) {
+        lastErr = e;
+        // Transient (timeout/reset): retry this host with backoff.
+        // Non-transient (DNS NXDOMAIN, TLS): don't retry this host, but DO
+        // fail over — it's a host-specific problem (break, not throw).
+        if (!isTransient(e)) break;
+        if (attempt < MAX_RETRIES - 1) {
+          const backoff = BASE_BACKOFF_MS * Math.pow(2, attempt) + Math.floor(Math.random() * 200);
+          await sleep(backoff);
+        }
       }
+    }
+    if (baseIdx < bases.length - 1) {
+      console.warn(`[send] ${bases[baseIdx]} failed → falling back to ${bases[baseIdx + 1]}`);
     }
   }
   throw lastErr;

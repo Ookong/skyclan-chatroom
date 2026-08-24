@@ -202,19 +202,13 @@ async function fetch(url, options = {}) {
   throw lastErr || new Error('fetch failed after retries');
 }
 
-// Domain fallback chain — primary first (workers.dev), fallback to api_base (thawflow.com).
-// Background: 2026-08-22 复测确认 workers.dev 稳定、thawflow.com 自定义域间歇超时（HTTP:000 / curl28 timeout）。
-// config.json 的 api_base 继续作 fallback URL；可在 config 覆盖 primary_api_base。
-// 2026-08-24 merge note (ruyi): per-request 重试由 fetch()（transient 检测 + 指数退避）负责，
-// apiCall 只负责按 base 链 failover —— 两路改进各归其位。
-const DEFAULT_PRIMARY_API_BASE = 'https://tpg-hq.icepaw.workers.dev';
-
+// Domain fallback chain — 2026-08-24 12:01 龙井 spec（冰爪实现，周三 review）：
+//   bases = [api_base, api_base_backup].filter(Boolean)
+// 顺序由 config 字段决定，每 host 保留 15s×3 退避（fetch() 负责，见上）。
+// 背景：双域名间歇抖动成常态——8/22 thawflow 自定义域挂 / 8/24 workers.dev 挂 3.5h。
+// apiCall 只负责按 base 链 failover，per-request 重试由 fetch() 各归其位。
 function getApiBases(config) {
-  const primary = config.primary_api_base || DEFAULT_PRIMARY_API_BASE;
-  const fallback = config.api_base;
-  const chain = [primary];
-  if (fallback && fallback !== primary) chain.push(fallback);
-  return chain;
+  return [config.api_base, config.api_base_backup].filter(Boolean);
 }
 
 async function apiCall(config, method, reqPath, body) {
@@ -238,7 +232,7 @@ async function apiCall(config, method, reqPath, body) {
     } catch (e) {
       lastErr = e;
       if (baseIdx < bases.length - 1) {
-        console.warn(`[poll] ${base} failed after retries → falling back to ${bases[baseIdx + 1]}`);
+        console.warn(`[poll] ${base} failed → falling back to ${bases[baseIdx + 1]}`);
       }
     }
   }
