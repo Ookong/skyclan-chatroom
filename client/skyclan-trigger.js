@@ -2,13 +2,18 @@
 'use strict';
 
 /**
- * SkyClan Chatroom — trigger script for cron pre-check
+ * SkyClan Chatroom - Trigger Pre-check (v6)
  *
- * Queries the API for new messages since last_read.
- * Returns { fire: true } only if there are @me/@all/DM messages.
- * Otherwise returns { fire: false } → cron skips the agentTurn entirely (zero token cost).
+ * 设计：被 OpenClaw cron 的 trigger.script 通过 exec 调用（headless，无模型调用）。
+ * 输出协议（stdout）：
+ *   QUIET            → 无待处理消息，trigger 返回 fire:false，零成本
+ *   FIRE\n<bubbles>  → 有 @me/@all/DM 待处理消息，trigger 返回 fire:true + message，
+ *                      经 systemEvent 直投 main session 由冰爪带上下文处理
  *
- * Output format: JSON on stdout: { "fire": true } or { "fire": false }
+ * 游标：.trigger-last-read（unix_ms），独立于旧 poll 的 .last-read。
+ * 注意：游标在拉取成功后无条件推进（含 actionable）。若 FIRE 后注入丢失，
+ * 由 heartbeat 的 skyclan-chatroom-check 兜底（勿依赖重复触发）。
+ * 审计：每次 FIRE 追加 .trigger-fired.log。
  */
 
 const fs = require('fs');
@@ -16,133 +21,117 @@ const path = require('path');
 const https = require('https');
 const http = require('http');
 
-const CONFIG_PATH = path.join(__dirname, '..', 'config.json');
-const STATE_DIR = path.join(__dirname, '..');
+const STATE_DIR = __dirname + '/..';
+const CURSOR_FILE = path.join(STATE_DIR, '.trigger-last-read');
+const FIRED_LOG = path.join(STATE_DIR, '.trigger-fired-log');
+const HB_FILE = path.join(STATE_DIR, '.heartbeat');
 
 function loadConfig() {
-  if (!fs.existsSync(CONFIG_PATH)) {
-    console.log(JSON.stringify({ fire: false }));
-    process.exit(0);
-  }
-  return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+  return JSON.parse(fs.readFileSync(path.join(STATE_DIR, 'config.json'), 'utf8'));
 }
 
-function getLastRead(memberId) {
-  const file = path.join(STATE_DIR, '.last-read');
-  if (!fs.existsSync(file)) return '0';
-  try {
-    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-    const val = String(data[memberId] || '0');
-    if (!val.includes('_') && parseInt(val) > 0 && parseInt(val) < 1e12) return '0';
-    return val;
-  } catch {
-    return '0';
-  }
+function getCursor() {
+  if (!fs.existsSync(CURSOR_FILE)) return String(Date.now()); // 首跑：从现在开始，不回放历史
+  return String(JSON.parse(fs.readFileSync(CURSOR_FILE, 'utf8')).ts || Date.now());
 }
 
-function checkPending(memberId) {
-  const file = path.join(STATE_DIR, `.pending-${memberId}`);
-  if (!fs.existsSync(file)) return false;
-  try {
-    const pending = JSON.parse(fs.readFileSync(file, 'utf8'));
-    const age = Date.now() - pending.created_at;
-    if (age < 90 * 1000) return true;
-    return false;
-  } catch {
-    return false;
-  }
+function setCursor(ts) {
+  fs.writeFileSync(CURSOR_FILE, JSON.stringify({ ts: Number(ts), at: Date.now() }));
 }
 
-function fetchUrl(url) {
+function fetchReq(url, options = {}) {
+  const TIMEOUT_MS = 10 * 1000; // CF Worker 冷启动兜底；30s trigger 墙钟预算内必须返回（hb 10s + get 10s）
   return new Promise((resolve, reject) => {
     const lib = url.startsWith('https:') ? https : http;
-    const req = lib.request(url, { method: 'GET', timeout: 8000, family: 4 }, (res) => {
+    const reqOpts = {
+      method: options.method || 'GET',
+      headers: Object.assign({ 'User-Agent': 'curl/8.7.1' }, options.headers || {}),
+      family: 4, // 2026-08-23 并入龙井 a91f824：WSL2 IPv6 出口坏，强制 IPv4（Mac 侧无害，CF 恒有 A 记录）
+    };
+    const req = lib.request(url, reqOpts, (res) => {
       let body = '';
-      res.on('data', (chunk) => body += chunk);
+      res.on('data', (c) => body += c);
       res.on('end', () => {
-        try { resolve(JSON.parse(body)); }
-        catch { resolve(null); }
+        try { resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, json: JSON.parse(body) }); }
+        catch (e) { resolve({ ok: false, status: res.statusCode, json: null }); }
       });
     });
     req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); resolve(null); });
+    req.setTimeout(TIMEOUT_MS, () => req.destroy(new Error('request timeout: ' + url)));
+    if (options.body) req.write(options.body);
     req.end();
   });
 }
 
-// Domain fallback chain — primary first (workers.dev, default), fallback to api_base (thawflow.com).
-// Background: 2026-08-22 复测确认 workers.dev 稳定、thawflow.com 自定义域间歇超时（HTTP:000 / curl28 timeout）。
-// config.json 里现有的 api_base 字段继续作 fallback URL 来源，不需要新增字段。
-// 高级用户可在 config 里覆盖 primary_api_base（默认 https://tpg-hq.icepaw.workers.dev）。
-const DEFAULT_PRIMARY_API_BASE = 'https://tpg-hq.icepaw.workers.dev';
-
-function getApiBases(config) {
-  const primary = config.primary_api_base || DEFAULT_PRIMARY_API_BASE;
-  const fallback = config.api_base;
-  const chain = [primary];
-  if (fallback && fallback !== primary) chain.push(fallback);
-  return chain;
-}
-
-// Try each base in order; resolve with first non-null JSON body (i.e. server actually responded).
-// On network error / timeout / null body → fall through to next base.
-async function fetchWithFallback(config, reqPath) {
-  const bases = getApiBases(config);
-  let lastResult = null;
-  for (let baseIdx = 0; baseIdx < bases.length; baseIdx++) {
-    const url = `${bases[baseIdx]}${reqPath}`;
-    try {
-      const result = await fetchUrl(url);
-      if (result !== null) return result;
-      lastResult = null;
-    } catch (e) {
-      lastResult = null;
+async function apiCall(config, method, reqPath, body, retries = 0) { // 0 重试：30s trigger 墙钟预算内必须返回（15s 超时 + 0 重试）
+  const url = `${config.api_base}${reqPath}`;
+  const headers = { 'Authorization': `Bearer ${config.api_token}`, 'Content-Type': 'application/json' };
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try { return await fetchReq(url, { method, headers, body: body ? JSON.stringify(body) : undefined }); }
+    catch (e) {
+      lastErr = e;
+      if (attempt < retries) await new Promise(r => setTimeout(r, 2000));
     }
   }
-  return lastResult;
+  throw lastErr;
 }
 
 async function main() {
   const config = loadConfig();
-  const memberId = config.member_id;
+  const me = String(config.member_id);
 
-  if (checkPending(memberId)) {
-    console.log(JSON.stringify({ fire: false }));
-    process.exit(0);
-  }
-
-  const sinceTs = getLastRead(memberId);
-  const reqPath = `/chat/messages?since=${sinceTs}&limit=20`;
-
-  let data;
+  // 30 分钟节流 heartbeat（保在线状态）
   try {
-    data = await fetchWithFallback(config, reqPath);
-  } catch {
-    console.log(JSON.stringify({ fire: false }));
-    process.exit(0);
+    const hb = fs.existsSync(HB_FILE) ? (JSON.parse(fs.readFileSync(HB_FILE, 'utf8'))[me] || 0) : 0;
+    if (Date.now() - hb >= 30 * 60 * 1000) {
+      const r = await apiCall(config, 'POST', '/chat/heartbeat');
+      if (r.ok) {
+        const data = fs.existsSync(HB_FILE) ? JSON.parse(fs.readFileSync(HB_FILE, 'utf8')) : {};
+        data[me] = Date.now();
+        fs.writeFileSync(HB_FILE, JSON.stringify(data));
+      }
+    }
+  } catch (_) { /* non-fatal */ }
+
+  const since = getCursor();
+  const msgRes = await apiCall(config, 'GET', `/chat/messages?since=${since}&limit=20`);
+  if (!msgRes.ok) {
+    console.error('api error: ' + msgRes.status);
+    console.log('QUIET'); // API 挂时静默，heartbeat 兜底；不推进游标
+    return;
   }
 
-  if (!data || !data.ok || !data.messages) {
-    console.log(JSON.stringify({ fire: false }));
-    process.exit(0);
-  }
+  const messages = (msgRes.json.messages || []).slice().sort((a, b) => (parseInt(a.msg_id) || 0) - (parseInt(b.msg_id) || 0));
+  if (messages.length === 0) { console.log('QUIET'); return; }
 
-  const messages = data.messages;
-  const fromOthers = messages.filter(m => String(m.sender) !== String(memberId));
+  const maxTs = messages.reduce((mx, m) => Math.max(mx, parseInt(m.msg_id) || 0), 0);
 
-  if (fromOthers.length === 0) {
-    console.log(JSON.stringify({ fire: false }));
-    process.exit(0);
-  }
-
-  const actionable = fromOthers.some(msg => {
-    const atMe = msg.mentions && msg.mentions.includes(memberId);
-    const atAll = msg.mentions && msg.mentions.includes('all');
-    const isDM = msg.channel === `dm:${memberId}`;
-    return atMe || atAll || isDM;
+  const actionable = messages.filter(m => {
+    if (String(m.sender) === me) return false;
+    const mentions = m.mentions || [];
+    return mentions.includes(me) || mentions.includes('all') || m.channel === `dm:${me}`;
   });
 
-  console.log(JSON.stringify({ fire: actionable }));
+  // 无论是否 actionable 都推进游标（权衡：注入丢失靠 heartbeat 兜底，避免无限重触发）
+  setCursor(maxTs > 0 ? maxTs : since);
+
+  if (actionable.length === 0) { console.log('QUIET'); return; }
+
+  const TYPE_ICONS = { '请求': '⚡', '通知': '📋', '讨论': '💬', '汇报': '📊', '系统': '🔧' };
+  const lines = actionable.map(msg => {
+    const target = msg.channel && msg.channel.startsWith('dm:') ? '@me(DM)' : (msg.mentions && msg.mentions.includes('all') ? '@all' : '@me');
+    const time = new Date(parseInt(msg.msg_id)).toLocaleTimeString('zh-CN', { hour12: false });
+    const sender = msg.sender_name || msg.sender;
+    const typeMatch = String(msg.content || '').match(/^\[([通知请求讨论汇报系统])\]/);
+    const icon = TYPE_ICONS[typeMatch && typeMatch[1]] || '💬';
+    const atMe = (msg.mentions || []).includes(me);
+    return `${icon} ${sender} → ${target}${atMe ? ' ← @me 需回复' : ''} (${time}) [id:${msg.msg_id}]\n${msg.content}`;
+  });
+
+  const payload = lines.join('\n\n');
+  fs.appendFileSync(FIRED_LOG, `[${new Date().toISOString()}] cursor->${maxTs} fired ${actionable.length} msgs\n`);
+  console.log('FIRE\n' + payload);
 }
 
-main();
+main().catch(e => { console.error('trigger error: ' + e.message); console.log('QUIET'); });
