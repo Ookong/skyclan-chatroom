@@ -1,0 +1,69 @@
+--- /tmp/admin-live.html	2026-08-29 04:05:21.000000000 +0800
++++ /tmp/admin-patched/admin.html	2026-08-29 04:06:17.000000000 +0800
+@@ -162,6 +162,10 @@
+ .panel{display:none}
+ .panel.active{display:block}
+ 
++/* Chat reply button (2026-08-29 猴哥需求) */
++.chat-reply-btn{border:none;background:transparent;color:var(--dim);cursor:pointer;font-size:.72rem;padding:2px 8px;border-radius:4px;transition:color .2s,background .2s;flex-shrink:0}
++.chat-reply-btn:hover{color:var(--accent);background:var(--accent)20}
++
+ /* Sub-tabs (within chatroom panel) */
+ .sub-tabs{display:flex;gap:.4rem;margin-bottom:1rem;border-bottom:1px solid var(--border);overflow-x:auto}
+ .sub-tab{padding:6px 14px;border:none;background:none;cursor:pointer;font-size:.85rem;font-weight:600;color:var(--text2);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;transition:all .2s}
+@@ -1359,7 +1363,10 @@
+         return '<div style="padding:.6rem 0;border-bottom:1px solid var(--border)">' +
+           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem">' +
+             '<span style="font-weight:600">' + escapeHtml(m.sender_name || m.sender) + '</span>' +
+-            '<span style="font-size:.72rem;color:var(--dim)">' + time + '</span>' +
++            '<span style="font-size:.72rem;color:var(--dim);display:inline-flex;align-items:center;gap:6px">' + time +
++              (String(m.sender) === String(session.id) ? '' :
++                '<button class="chat-reply-btn" data-sender="' + escapeHtml(String(m.sender)) + '" data-name="' + escapeHtml(m.sender_name || String(m.sender)) + '" title="回复 TA">↩ 回复</button>') +
++            '</span>' +
+           '</div>' +
+           '<div style="font-size:.85rem;line-height:1.5;color:var(--text);margin-bottom:.2rem">' + channelTag + mentionBadge + '</div>' +
+           '<div style="font-size:.88rem;line-height:1.6">' + content + '</div>' +
+@@ -1381,6 +1388,43 @@
+   });
+ }
+ 
++// ── Chat reply button (2026-08-29 猴哥需求) ──
++function replyToMessage(senderId, senderName){
++  var sel = document.getElementById('chat-send-channel');
++  var target = 'dm:' + senderId;
++  var found = false;
++  if(sel){
++    for(var i = 0; i < sel.options.length; i++){
++      if(sel.options[i].value === target){ sel.value = target; found = true; break; }
++    }
++    if(!found){ sel.value = 'all'; }
++  }
++  var ta = document.getElementById('chat-send-content');
++  if(ta){
++    if(!found){ // 作者不在私信下拉（非活跃成员/未加载）→ @all 里点名
++      var prefix = '@' + senderName + ' ';
++      if(ta.value.indexOf(prefix) !== 0){ ta.value = prefix + ta.value; }
++    }
++    ta.focus();
++    ta.setSelectionRange(ta.value.length, ta.value.length);
++    ta.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
++  }
++  var statusEl = document.getElementById('chat-send-status');
++  if(statusEl){
++    statusEl.textContent = found ? '↩ 将私信回复给 ' + senderName : '↩ ' + senderName + ' 不在私信列表，切到 @all 并已 @TA';
++  }
++}
++(function(){
++  var list = document.getElementById('chat-history-list');
++  if(list){
++    list.addEventListener('click', function(e){
++      var btn = e.target.closest ? e.target.closest('.chat-reply-btn') : null;
++      if(!btn) return;
++      replyToMessage(btn.getAttribute('data-sender'), btn.getAttribute('data-name'));
++    });
++  }
++})();
++
+ // ── Chatroom member management ──
+ function loadStaleMessages(){
+   const container = document.getElementById('stale-messages');
