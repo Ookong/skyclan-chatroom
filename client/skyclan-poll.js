@@ -108,6 +108,9 @@ function writePending(stateDir, memberId, messages, lastTs) {
     created_at: Date.now(),
     last_ts: String(lastTs),
     msg_count: messages.length,
+    // v4.1: keep message payloads so the ack-guard below can redeliver them
+    // if the agent run that carried them timed out / died without replying.
+    messages,
   };
   fs.writeFileSync(file, JSON.stringify(data));
 }
@@ -130,6 +133,31 @@ function ackPending(stateDir, memberId) {
     return pending;
   }
   return null;
+}
+
+// --- Actionable message formatter (v4.1: shared by Step 5 + ack-guard redelivery) ---
+
+function formatActionable(messages, memberId) {
+  const TYPE_ICONS = {
+    '请求': '⚡',
+    '通知': '📋',
+    '讨论': '💬',
+    '汇报': '📊',
+    '系统': '🔧',
+  };
+  return messages.map(msg => {
+    const target = msg.channel === 'all' ? '@all' : `@me`;
+    const time = new Date(parseInt(msg.msg_id)).toLocaleTimeString('zh-CN', { hour12: false });
+    const sender = msg.sender_name || msg.sender;
+    let typeIcon = '💬';
+    const typeMatch = msg.content.match(/^\[([通知请求讨论汇报系统])\]/);
+    if (typeMatch) {
+      typeIcon = TYPE_ICONS[typeMatch[1]] || '💬';
+    }
+    const atMe = msg.mentions && msg.mentions.includes(memberId);
+    const urgency = atMe ? ' ← @me 需回复' : '';
+    return `${typeIcon} ${sender} → ${target}${urgency} (${time})\n${msg.content}`;
+  });
 }
 
 // --- HTTP ---
@@ -260,10 +288,53 @@ async function main() {
     if (pending) {
       const pendingAge = Date.now() - pending.created_at;
       if (pendingAge >= ACK_TIMEOUT_MS) {
-        // Previous poll was processed (enough time elapsed) → ack it
-        if (verbose) console.log(`   ack pending (age: ${Math.round(pendingAge / 1000)}s, ts: ${pending.last_ts})`);
-        ackPending(stateDir, memberId);
-        setLastRead(stateDir, memberId, pending.last_ts);
+        // v4.1 ack-guard (2026-08-29 incident: an @me DM was fetched, the agent
+        // run timed out at 180s before replying, and the next run force-acked
+        // by age alone → message silently lost). Now verify a reply was
+        // actually sent before acking; otherwise redeliver, then log loss.
+        let replied = null; // true/false = verified; null = network unverifiable
+        try {
+          const chk = await apiCall(config, 'GET', `/chat/messages?since=${pending.created_at}&limit=50`);
+          if (chk.ok) {
+            replied = (chk.json.messages || []).some(m => String(m.sender) === String(memberId));
+          }
+        } catch (_) { /* keep null */ }
+
+        const retries = pending.retries || 0;
+        const MAX_REDELIVER = 3;
+
+        if (replied === true) {
+          if (verbose) console.log(`   ack pending (reply verified, age: ${Math.round(pendingAge / 1000)}s)`);
+          ackPending(stateDir, memberId);
+          setLastRead(stateDir, memberId, pending.last_ts);
+        } else if (replied === false && Array.isArray(pending.messages) && retries < MAX_REDELIVER) {
+          // No reply from me since delivery → agent likely died mid-turn. Redeliver.
+          pending.retries = retries + 1;
+          pending.created_at = Date.now();
+          fs.writeFileSync(getPendingFile(stateDir, memberId), JSON.stringify(pending));
+          console.log(`⚠️ 上轮消息未确认回复（agent 可能超时被杀），第 ${retries + 1}/${MAX_REDELIVER} 次重投递——以下消息仍需处理：\n`);
+          console.log(formatActionable(pending.messages, memberId).join('\n\n'));
+          process.exit(0);
+        } else if (replied === false) {
+          // Redelivery exhausted, or legacy pending without payloads → ack,
+          // but leave an auditable trail and surface the loss loudly.
+          try {
+            fs.appendFileSync(path.join(stateDir, `.lost-${memberId}`),
+              JSON.stringify({ at: new Date().toISOString(), reason: Array.isArray(pending.messages) ? 'redeliver-exhausted' : 'legacy-no-payload', last_ts: pending.last_ts, messages: pending.messages || null }) + '\n');
+          } catch (_) { /* non-fatal */ }
+          if (Array.isArray(pending.messages)) {
+            console.log(`⚠️ LOST: 重投递 ${MAX_REDELIVER} 次仍无回复，以下消息按已读 ack（已记 .lost-${memberId}）——如仍需回复请立即处理：\n`);
+            console.log(formatActionable(pending.messages, memberId).join('\n\n'));
+          } else {
+            if (verbose) console.log(`   ack pending (legacy no-payload, age: ${Math.round(pendingAge / 1000)}s)`);
+          }
+          ackPending(stateDir, memberId);
+          setLastRead(stateDir, memberId, pending.last_ts);
+        } else {
+          // replied === null: network unverifiable → never swallow; retry next round
+          if (verbose) console.log(`   ⏳ ack guard: network unverifiable, pending kept for next round`);
+          process.exit(0);
+        }
       } else {
         // Previous poll might still be processing → skip this round
         if (verbose) console.log(`   ⏳ pending not yet acked (age: ${Math.round(pendingAge / 1000)}s < ${ACK_TIMEOUT_MS / 1000}s), skipping poll`);
@@ -356,33 +427,7 @@ async function main() {
     writePending(stateDir, memberId, actionable, lastVal);
 
     // Step 5: Output ONLY actionable messages as categorized chat bubbles
-    const TYPE_ICONS = {
-      '请求': '⚡',
-      '通知': '📋',
-      '讨论': '💬',
-      '汇报': '📊',
-      '系统': '🔧',
-    };
-
-    function formatMessage(msg) {
-      const target = msg.channel === 'all' ? '@all' : `@me`;
-      const time = new Date(parseInt(msg.msg_id)).toLocaleTimeString('zh-CN', { hour12: false });
-      const sender = msg.sender_name || msg.sender;
-
-      let typeIcon = '💬';
-      let content = msg.content;
-      const typeMatch = msg.content.match(/^\[([通知请求讨论汇报系统])\]/);
-      if (typeMatch) {
-        typeIcon = TYPE_ICONS[typeMatch[1]] || '💬';
-      }
-
-      const atMe = msg.mentions && msg.mentions.includes(memberId);
-      const urgency = atMe ? ' ← @me 需回复' : '';
-
-      return `${typeIcon} ${sender} → ${target}${urgency} (${time})\n${content}`;
-    }
-
-    const lines = actionable.map(formatMessage);
+    const lines = formatActionable(actionable, memberId);
 
     // Output to stdout (cron captures this)
     console.log(lines.join('\n\n'));

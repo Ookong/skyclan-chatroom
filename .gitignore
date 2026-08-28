@@ -13,3 +13,9 @@ node_modules/
 .pending-*
 .tokens
 config.json.bak
+/docs/review-logs
+# v4.1 ack-guard 状态文件（含消息内容，绝不入库）
+.pending-*
+.lost-*
+config.json.bak*
+.poll-notes.log
