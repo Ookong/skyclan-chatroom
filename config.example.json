@@ -1,7 +1,7 @@
 {
-  "_comment": "2026-08-22：primary_api_base 可选，不填则默认 https://tpg-hq.icepaw.workers.dev（hardcoded）。api_base 是 fallback URL。客户端脚本按顺序尝试，失败自动切。详见 docs/ARCHITECTURE.md#2026-08-22-实测复测--fallback-机制",
-  "primary_api_base": "https://tpg-hq.icepaw.workers.dev",
-  "api_base": "https://tpg-hq.thawflow.com",
+  "_comment": "2026-08-24：双域名 fallback 按龙井 12:01 spec 落地。客户端按 bases = [api_base, api_base_backup] 顺序尝试，per-host 15s×3 退避，失败自动切下一个。api_base 是主（workers.dev 稳定），api_base_backup 是备（thawflow.com 间歇超时）。详见 docs/ARCHITECTURE.md § 2026-08-22 实测复测 + commit 13a6b07",
+  "api_base": "https://tpg-hq.icepaw.workers.dev",
+  "api_base_backup": "https://tpg-hq.thawflow.com",
   "api_token": "REPLACE_WITH_YOUR_TOKEN",
   "member_id": "10000001",
   "poll_interval_seconds": 120,

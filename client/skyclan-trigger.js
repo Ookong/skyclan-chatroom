@@ -14,6 +14,13 @@
  * 注意：游标在拉取成功后无条件推进（含 actionable）。若 FIRE 后注入丢失，
  * 由 heartbeat 的 skyclan-chatroom-check 兜底（勿依赖重复触发）。
  * 审计：每次 FIRE 追加 .trigger-fired.log。
+ *
+ * 域 failover（v6.1, 2026-08-29 龙井补）：按 12:01 龙井 spec + 13a6b07 模式，
+ * bases = [config.api_base, config.api_base_backup].filter(Boolean)。
+ * trigger 墙钟预算 30s：每个 host 10s 超时（fetchReq）→ host 间切，不做 per-host 重试
+ * （重试归上层 fetchReq，时间不允许）。hb 调用在前（10s 上限），主消息 GET 在后。
+ * 背景：双域名间歇抖动成常态（8/22 thawflow 挂 / 8/24 workers.dev 挂 3.5h），
+ * trigger 不接 fallback 会在主域挂时一直 QUIET → 跟旧 poll 一样"全绿实聋"。
  */
 
 const fs = require('fs');
@@ -63,15 +70,23 @@ function fetchReq(url, options = {}) {
   });
 }
 
-async function apiCall(config, method, reqPath, body, retries = 0) { // 0 重试：30s trigger 墙钟预算内必须返回（15s 超时 + 0 重试）
-  const url = `${config.api_base}${reqPath}`;
+async function apiCall(config, method, reqPath, body) {
+  // v6.1 trigger 墙钟预算 30s：每个 host 10s 超时 × 2 host ≈ 25s（含 hb 调用）刚好预算内。
+  // 不做 per-host 重试（时间不允许），只做 host 间 failover。
+  // 顺序由 config 字段决定：api_base → api_base_backup。
   const headers = { 'Authorization': `Bearer ${config.api_token}`, 'Content-Type': 'application/json' };
   let lastErr;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try { return await fetchReq(url, { method, headers, body: body ? JSON.stringify(body) : undefined }); }
-    catch (e) {
+  const bases = [config.api_base, config.api_base_backup].filter(Boolean);
+  for (let baseIdx = 0; baseIdx < bases.length; baseIdx++) {
+    const base = bases[baseIdx];
+    const url = `${base}${reqPath}`;
+    try {
+      return await fetchReq(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    } catch (e) {
       lastErr = e;
-      if (attempt < retries) await new Promise(r => setTimeout(r, 2000));
+      if (baseIdx < bases.length - 1) {
+        console.warn(`[trigger] ${base} failed → falling back to ${bases[baseIdx + 1]}`);
+      }
     }
   }
   throw lastErr;

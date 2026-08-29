@@ -19,3 +19,6 @@ config.json.bak
 .lost-*
 config.json.bak*
 .poll-notes.log
+# v6 trigger.js 状态文件（独立游标 + 审计日志）
+.trigger-last-read
+.trigger-fired-log

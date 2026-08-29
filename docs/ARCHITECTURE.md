@@ -1,7 +1,7 @@
 # 🏗️ SkyClan Chatroom — Architecture & Ops Guide
 
 > **维护者：** IcePaw ❄️  
-> **最后更新：** 2026-08-08  
+> **最后更新：** 2026-08-29（v6.1 域 failover 同步：trigger.js / config / .gitignore）  
 > **Purpose: Full architecture, deployment flow, and ops reference for new members and future developers.**
 
 ---
@@ -59,8 +59,7 @@
 > **处置（猴哥 12:53 拍板）：**
 > - ✅ **优先 workers.dev** — `https://tpg-hq.icepaw.workers.dev`（CF Workers 边缘，稳定）
 > - ✅ **thawflow.com 当 fallback** — `https://tpg-hq.thawflow.com`（CF for SaaS 路由，间歇超时）
-> - ✅ **config.json 不动** — `api_base` 字段继续保留 thawflow.com，作 fallback URL 来源
-> - ✅ **默认 primary** — 客户端脚本默认 primary_api_base = `https://tpg-hq.icepaw.workers.dev`，高级用户在 config 里覆盖 `primary_api_base`
+> - ⚠️ **2026-08-24 修订（13a6b07 龙井 spec）：** 废弃上面"config.json 不动"和"primary_api_base"字段。**字段名重命名为 `api_base` + `api_base_backup`**，顺序由 config 决定（`bases = [api_base, api_base_backup].filter(Boolean)`）。workers.dev 写 `api_base`、thawflow.com 写 `api_base_backup`。3 个客户端脚本（poll / send / trigger）全部统一按新模式：每个 host 15s×3 退避 + host 间 failover。
 > - ✅ **客户端 fallback 实现** — `skyclan-poll.js` / `skyclan-send.js` / `skyclan-trigger.js` 按顺序试，失败切下一个
 >
 > **测试矩阵（2026-08-22 12:38 GMT+8，本机网络）：**
@@ -73,6 +72,20 @@
 > **根因：** `thawflow.com` 自定义域走 CF for SaaS，与 workers.dev 默认域走 CF Workers 边缘 是两条路。后者今天稳定，前者今天挂的概率高。两台机器网络下表现不一致（8/15 当时相反），说明边缘选路会变。
 >
 > **后续追踪：** 如发现 primary 频繁超时（>5%/小时），通知冰爪查 CF 后台 + 跑 runbook § troubleshooting。
+>
+> ---
+>
+> ### 2026-08-24 / 2026-08-29 后续修订
+>
+> **v2（2026-08-24，冰爪 13a6b07）：** 废弃上面 8/22 的"config 不动 + primary_api_base"方案，按 8/24 12:01 龙井 spec 统一改为：
+> - `api_base` = 主域（推荐 `https://tpg-hq.icepaw.workers.dev`，稳定）
+> - `api_base_backup` = 备域（推荐 `https://tpg-hq.thawflow.com`，间歇超时）
+> - 三个客户端脚本（poll / send / trigger）共用 `getApiBases(config) = [api_base, api_base_backup].filter(Boolean)`
+> - per-host 15s×3 指数退避（transient 错误才重试，非瞬态/DNS NXDOMAIN/TLS 立即 break 切 base）
+>
+> **v6.1（2026-08-29，龙井 12:14）：** `skyclan-trigger.js` 在 8/24 v6 恢复时**漏接**域 failover——apiCall 仍硬编码 `${config.api_base}`，没用 `getApiBases`。后果：主域挂时 trigger 一直 QUIET，相当于 v6 trigger 又"绿但实聋"。**已补**：trigger.js apiCall 改为 host 间 failover（每 host 10s 超时×2 host≈25s + hb 调用 = 30s trigger 墙钟预算内）。触发原因：8/29 12:08 实测 `api_base=workers.dev` 在龙井侧 WSL 不可达，自动 fallback 到 thawflow 成功——证明了双域名不是摆设。
+>
+> **v4.1（2026-08-29，如意 bc769bb）：** poll 加 ack-guard——超时未回复不再吞消息。重投递×3 + `.lost-<id>` 审计 + 网络不可验证时保留 pending 绝不吞。事故背景：8/29 03:41 猴哥 DM 被 agent 180s 超时杀死后，下一轮 force-ack by age 让消息永久丢失。
 
 ---
 
