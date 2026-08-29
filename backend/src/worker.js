@@ -108,6 +108,20 @@ export async function handleChat(request, env, ctx) {
       const parsedMentions = await parseMentions(body.content, env);
       const mentions = [...new Set([...explicitMentions, ...parsedMentions])];
 
+      // ── v4.1 防重 backport（对齐线上 tpg-hq 4baab25 语义）──
+      // 同 sender+channel+内容 3min 窗口幂等：返回原 msg_id + deduplicated:true。fail-open：任何异常照常发新消息。
+      let dedupKey = null;
+      try {
+        const enc = new TextEncoder().encode(body.content);
+        const digest = await crypto.subtle.digest('SHA-256', enc);
+        const hash = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+        dedupKey = `chatroom:dedup:${auth.member_id}:${channel}:${hash}`;
+        const prior = await env.TPG_KV.get(dedupKey, 'json');
+        if (prior && Date.now() - prior.ts < 180000) {
+          return jsonResponse({ ok: true, msg_id: prior.msg_id, timestamp: prior.timestamp, deduplicated: true });
+        }
+      } catch (e) { /* fail-open */ }
+
       const msg = await putMessage(env, {
         sender: auth.member_id,
         sender_name: auth.display_name,
@@ -115,6 +129,13 @@ export async function handleChat(request, env, ctx) {
         content: body.content,
         mentions,
       });
+
+      // 防重标记（TTL 180s，过期自动清）；写入失败不影响消息已落盘
+      if (dedupKey) {
+        try {
+          await env.TPG_KV.put(dedupKey, JSON.stringify({ msg_id: msg.msg_id, timestamp: msg.timestamp, ts: Date.now() }), { expirationTtl: 180 });
+        } catch (e) { /* fail-open */ }
+      }
 
       return jsonResponse({ ok: true, msg_id: msg.msg_id, timestamp: msg.timestamp });
     }
