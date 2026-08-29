@@ -119,6 +119,31 @@ function isRequestToAll(m) {
   return /^\s*\[请求\]/.test(c) && ((m.mentions || []).includes('all') || /(^|[^\w@])@all\b/.test(c));
 }
 
+// Domain fallback chain — 2026-08-29 12:25 龙井补：
+//   bases = [config.api_base, config.api_base_backup].filter(Boolean)
+// 跟 13a6b07 trigger.js 同构。per-host 15s×3 退避（fetch() 负责）+ host 间 failover。
+// 背景：sweep 8/23 写时还没 fallback 概念；13a6b07 8/24 加完 trigger/pol/send 后
+// sweep 漏接。今天 12:24 巡检验证：workers.dev 15s 超时 → sweep 直接挂，没切 thawflow。
+// sweep 是兜底脚本，挂了心跳失败——必须接 fallback。报修：commit 待 review。
+async function fetchWithFallback(config, reqPath, options = {}) {
+  const headers = options.headers || {};
+  let lastErr;
+  const bases = [config.api_base, config.api_base_backup].filter(Boolean);
+  for (let baseIdx = 0; baseIdx < bases.length; baseIdx++) {
+    const base = bases[baseIdx];
+    const url = `${base}${reqPath}`;
+    try {
+      return await fetch(url, { headers });
+    } catch (e) {
+      lastErr = e;
+      if (baseIdx < bases.length - 1) {
+        console.warn(`[sweep] ${base} failed → falling back to ${bases[baseIdx + 1]}`);
+      }
+    }
+  }
+  throw lastErr;
+}
+
 async function main() {
   const opts = parseArgs();
   const config = loadConfig(opts.config);
@@ -132,7 +157,7 @@ async function main() {
   const all = new Map(); // msg_id -> msg
   let since = windowStart;
   for (let page = 0; page < 40; page++) {
-    const res = await fetch(`${config.api_base}/chat/messages?since=${since}&limit=25`, { headers });
+    const res = await fetchWithFallback(config, `/chat/messages?since=${since}&limit=25`, { headers });
     if (!res.ok || !res.json || res.json.ok === false) {
       console.error(`❌ sweep API error: HTTP ${res.status} ${JSON.stringify(res.json || res.raw || '').slice(0, 200)}`);
       process.exit(1);
