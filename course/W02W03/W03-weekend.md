@@ -45,19 +45,19 @@ print(secret)
 ```python
 import random
 
-print("=== 猜大小 v1 ===")
+print("=== High-Low Guess v1 ===")
 
 secret = random.randint(1, 100)
-print("(调试模式：答案是", secret, ")")
+print("(debug mode: the answer is", secret, ")")
 
-guess = int(input("我想好了一个 1-100 的数，你猜："))
+guess = int(input("I picked a number 1-100. Your guess? "))
 
 if guess > secret:
-    print("大了！答案是", secret)
+    print("Too high! It was", secret)
 elif guess < secret:
-    print("小了！答案是", secret)
+    print("Too low! It was", secret)
 else:
-    print("恭喜，一次猜中！你就是族长的料")
+    print("First try! You have leader material")
 ```
 
 运行几局，体会结构：

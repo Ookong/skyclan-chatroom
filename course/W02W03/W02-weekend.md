@@ -36,19 +36,19 @@
 参考代码（先自己写，卡住 10 分钟以上再看）：
 
 ```python
-family = input("你姓什么？")
-given = input("你叫什么名？")
+family = input("Your family name? ")
+given = input("Your given name? ")
 
 full = family + given
 
-print("完整姓名：", full)
-print("大写喊名：", full.upper())
-print("名字长度：", len(full))
-print("名字首字：", full[0])
-print("姓氏打星：", full.replace(family, "*"))
-print("含字母 a：", "a" in full.lower())
+print("Full name:", full)
+print("SHOUT it out:", full.upper())
+print("Name length:", len(full))
+print("First letter:", full[0])
+print("Family name starred:", full.replace(family, "*"))
+print("Contains letter a:", "a" in full.lower())
 
-title = "名字实验室报告完毕"
+title = "Name Lab Report Complete"
 print(f"{title:^20}")
 ```
 
@@ -73,11 +73,11 @@ print(f"{title:^20}")
 **目标小票长相（数值自定）：**
 
 ```text
-=== 家庭小卖部 ===
-猫粮 × 3 = 118.50 元
-猫条 × 10 = 45.00 元
-合计：163.50 元
-实付 200 元，找零：36.50 元
+=== Family Corner Store ===
+Cat food x 3 = 118.50 yuan
+Cat treats x 10 = 45.00 yuan
+Total: 163.50 yuan
+Paid 200 yuan, change: 36.50 yuan
 ```
 
 **提示三条：**
