@@ -27,6 +27,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const http = require('http');
+const { execSync } = require('child_process');
 
 // --- Config ---
 
@@ -94,6 +95,26 @@ function setLastHeartbeat(stateDir, memberId) {
   }
   data[memberId] = Date.now();
   fs.writeFileSync(file, JSON.stringify(data));
+}
+
+// ── 连败跟踪 + 主人告警（P1，2026-08-30 todo-hourly：连续 3 次拉取失败 → iMessage 猴哥，1h 冷却）──
+function getFailStreak(stateDir) {
+  const f = path.join(stateDir, '.poll-fail-streak');
+  try { return JSON.parse(fs.readFileSync(f, 'utf8')).n || 0; } catch (_) { return 0; }
+}
+function setFailStreak(stateDir, n) {
+  try { fs.writeFileSync(path.join(stateDir, '.poll-fail-streak'), JSON.stringify({ n, ts: Date.now() })); } catch (_) { }
+}
+function notifyOwnerOnStreak(stateDir, streak, lastErr) {
+  if (streak < 3) return;
+  const cd = path.join(stateDir, '.poll-notify-ts');
+  try {
+    if (fs.existsSync(cd) && Date.now() - JSON.parse(fs.readFileSync(cd, 'utf8')).ts < 3600 * 1000) return;
+  } catch (_) { }
+  try {
+    execSync(`imsg send --to jieqiwang@gmail.com --text "⚠️ [Chatroom] skyclan-poll 连续 ${streak} 次拉取失败（最后错误: ${String(lastErr).slice(0, 80)}）——后端/网络异常，请检查 tpg-hq 与 client 状态"`, { timeout: 15000 });
+    fs.writeFileSync(cd, JSON.stringify({ ts: Date.now() }));
+  } catch (_) { /* 告警失败不致命 */ }
 }
 
 // --- Two-phase ack state ---
@@ -371,8 +392,12 @@ async function main() {
       if (msgRes.status === 401) {
         console.error('❌ Authentication failed - check API token');
       }
+      const streak = getFailStreak(stateDir) + 1;
+      setFailStreak(stateDir, streak);
+      notifyOwnerOnStreak(stateDir, streak, msgRes.status);
       process.exit(1);
     }
+    setFailStreak(stateDir, 0); // 拉取成功 → 连败清零
 
     const messages = msgRes.json.messages || [];
 
