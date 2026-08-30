@@ -96,6 +96,15 @@ async function main() {
   const config = loadConfig();
   const me = String(config.member_id);
 
+  // 去重（P1，2026-08-30 todo-hourly）：30s 内已有一次 eval 在跑/刚跑完 → 直接 QUIET。
+  // 防双 lane 竞态（cron 与手动/心跳同时 eval）重复 FIRE 同一批消息。
+  const EVAL_LOCK = path.join(STATE_DIR, '.trigger-last-eval');
+  try {
+    const st = fs.statSync(EVAL_LOCK);
+    if (Date.now() - st.mtimeMs < 30 * 1000) { console.log('QUIET (dedup)'); return; }
+  } catch (_) { /* 首次运行无锁 */ }
+  try { fs.writeFileSync(EVAL_LOCK, String(Date.now())); } catch (_) {}
+
   // 30 分钟节流 heartbeat（保在线状态）
   try {
     const hb = fs.existsSync(HB_FILE) ? (JSON.parse(fs.readFileSync(HB_FILE, 'utf8'))[me] || 0) : 0;
