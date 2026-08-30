@@ -55,8 +55,10 @@
 ## 四、升级流程（可照抄）
 
 > ⚠️ **适用范围**：仅限能正常运行官方 Swift 版 imsg 的机器（macOS 较新）。
-> **太老的机器（如跑自研 imsg-legacy 的）不要按本流程升级**，imsg-legacy 保持现状。
-> imsg-legacy 是 Node.js 实现的替代品（`/usr/local/bin/imsg-legacy` → `/usr/local/lib/node_modules/imsg-legacy/src/index.js`），与官方 Swift 版是两套东西，本指南不适用。
+> **太老的机器（如跑 imsg-legacy 的）不要按本流程升级**。
+> imsg-legacy 的官方源与更新渠道：**github.com/Ookong/imsg-legacy**（npm 包 `imsg-legacy`，最新 1.0.1）。
+> 老机器的升级路线 = 沿 imsg-legacy 这条发布线更新（npm），**不是**换成 Swift 版 imsg。两套独立发布线，别搞混。
+> 本机（开发初版用）已于 2026-08-30 退役 imsg-legacy，生产副本在老 MacBook 上继续服役。
 
 ```bash
 # 1. 下载 + 校验
