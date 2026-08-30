@@ -40,6 +40,8 @@ print(secret)
 
 ## 三、搭游戏（20 分钟）
 
+> 📁 项目存 `~/learning-homework/W03/W03-project.py`。
+
 新建 `guess_game.py`，亲手敲：
 
 ```python
