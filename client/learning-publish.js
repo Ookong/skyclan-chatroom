@@ -19,7 +19,8 @@ if (!WEEK || !/^W\d+$/.test(WEEK)) {
   process.exit(1);
 }
 
-const COURSE_DIR = path.join(os.homedir(), '.openclaw/workspace/life/programming-course/course');
+// v1.5 迁移后：编辑源迁到沙坑仓 mentors-den/course/（life/programming-course 已废 23:13）
+const COURSE_DIR = path.join(os.homedir(), 'learning-homework', 'mentors-den', 'course');
 const CONFIG = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'config.json'), 'utf8'));
 const BASE = process.env.SKYCLAN_BASE_URL || 'https://tpg-hq.thawflow.com';
 
