@@ -22,3 +22,9 @@ config.json.bak*
 # v6 trigger.js 状态文件（独立游标 + 审计日志）
 .trigger-last-read
 .trigger-fired-log
+
+# Env files (never commit keys)
+*.env
+.env
+.env.*
+!.env.example

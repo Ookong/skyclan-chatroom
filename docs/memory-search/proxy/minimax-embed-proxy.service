@@ -1,0 +1,15 @@
+[Unit]
+Description=MiniMax Embedding OpenAI-Compatible Translation Proxy
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=-%h/.openclaw/scripts/minimax-embed-proxy.env
+ExecStart=/usr/bin/env node %h/.openclaw/scripts/minimax-embed-proxy.mjs
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
