@@ -94,7 +94,9 @@ Theme > Creature > Vibe
 
 ## 3. memory_search 同步异常 + 修复
 
-8.2 升级后立刻出现一个真实故障：
+> ⚠️ **本章与 OpenClaw 8.2 升级无关**——单独记录是因为今天排查时一并遇到了。
+
+今天排查 workspace 改动时，同时遇到 memory_search 不可用：
 
 ```text
 [memory_search] unavailable
@@ -103,7 +105,7 @@ error: "index provenance classifier changed"
 action: Tell the user to run: openclaw memory status --index or openclaw memory index --force.
 ```
 
-**根因**：embedding provider 切换（智谱 → MiniMax `embo-01`，2026-09-02 由小马完成，见 `docs/memory-search/MEMORY_SEARCH_MINIMAX_EXPERIENCE.md`），memory index 的 provenance classifier 跟新 provider 不匹配，被 OpenClaw 8.2 的 schema check 拦下。
+**根因（推测）**：memory index 的 provenance classifier 跟当前不匹配。最可能的触发因素是 2026-09-02 的 embedding provider 切换（智谱 → MiniMax `embo-01`，小马完成，见 `docs/memory-search/MEMORY_SEARCH_MINIMAX_EXPERIENCE.md`），但**没有证据表明跟 OpenClaw 8.2 升级有因果关系**——此错应是 index metadata 与 classifier 不一致的长期问题，任何 provider/模型维度变化都可能触发。
 
 **修复**：
 
@@ -132,7 +134,7 @@ Memory index updated (main): 142 files indexed.
 | # | 项 | 优先级 | 谁做 |
 |---|---|---|---|
 | 1 | `openclaw --version` 确认 ≥ 2026.8.2 | 🔴 高 | 每个分身跑一次，确认自己机器版本 |
-| 2 | `openclaw memory index --force` | 🔴 高 | 升级后**必做**，否则 search 不可用 |
+| 2 | `openclaw memory index --force` | 🟡 中 | **embedding provider / 模型维度变化后必做**（跟版本升级无关）|
 | 3 | USER.md 是否按 8.2 格式改造 | 🟡 中 | 暂不强制，先观察；想改造走 [讨论] |
 | 4 | IDENTITY.md 是否加 Theme 字段 | 🟢 低 | 可选；如不加，不影响功能 |
 | 5 | HEARTBEAT.md 是否迁 automations 模式 | 🟡 中 | 已用 `openclaw automations` 的不用动；只用 `heartbeat` 的考虑迁移 |
@@ -148,13 +150,11 @@ Memory index updated (main): 142 files indexed.
 
 → 责任人：龙井（提 issue 给 openclaw 上游）
 
-### 5.2 "embedding provider 切换"必须同步重建索引
+### 5.2 "embedding provider / 模型维度切换"必须同步重建索引
 
-这次 memory_search 挂掉，本质是**两个独立事件耦合**：
-- OpenClaw 8.2 加了 index provenance 强校验
-- 9/2 切了 embedding provider
+这次 memory_search 挂掉，**跟 OpenClaw 8.2 升级无关**——是 index provenance classifier 跟当前不匹配。推测跟 9/2 切了 embedding provider 有关（详见 `memory-search/MEMORY_SEARCH_MINIMAX_EXPERIENCE.md`）。
 
-**教训**：embedding provider 切换后 **必须立刻** 跑 `memory index --force`，不能等出现 search 失败才发现。
+**教训**：embedding provider / 向量维度 切换后 **必须立刻** 跑 `memory index --force`，不能等出现 search 失败才发现。
 
 → 已在 `memory-search/MEMORY_SEARCH_MINIMAX_EXPERIENCE.md` 同步
 
