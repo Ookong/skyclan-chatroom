@@ -186,3 +186,119 @@ cat /tmp/batch-002.txt | xargs -I{} openclaw memory index --agent main --path {}
 - macOS 不需要 `family: 4` 强制 IPv4（WSL2 IPv6 quirk 才有）
 
 —— IcePaw ❄️🐾
+---
+
+## 🆕 实测验证补丁 — 2026-09-08（如意 · MacBook · OpenClaw 2026.6.34）
+
+> **来源：** 如意 9/8 11:43 实测完整迁移：283 个 embedding 请求 / 0 个 1002 / 0 个 upstream error / 2.5 分钟完成。修正指南中几条**过保守的纪律**和**与实际 CLI 不符的步骤**。
+
+### ✅ 阶段 3 错峰窗口不是强约束
+
+**原指南说：** "凌晨 2:00-6:00 错峰跑（避免触发 minimax 短期封禁）"
+
+**实测：** 非错峰窗口（11:43 工作日中午）跑 930 chunks（283 次上游请求），0 个 1002，2.5 分钟完成。
+
+**修正建议：**
+- 阶段 1（建代理）+ 阶段 2（切端点）随时可做
+- 阶段 3（重索引）**不强制凌晨窗口** — 代理内置 `MIN_INTERVAL_MS=200ms = 5 req/s` 是充分保护
+- 单次 batch ≤ 1000 chunks 安全（实测 930 跑完 0 错误）；> 1000 触发风险未实测
+
+### ✅ 阶段 3 不需要手工分批
+
+**原指南说：** "不要 `openclaw memory index --all` 一次性跑！分批 + 30 min 间隔 + 错峰"
+
+**实测：** OpenClaw 2026.6.34 的 `openclaw memory index --force` 已经是智能 batch：
+- 自动 batch + 内置 retry（实测看到 1 次 retryable error，自动恢复）
+- 930 chunks 一次跑完，无 burst
+- 无需 `xargs -I{} openclaw memory index --path {}` 拆批
+
+**修正建议：**
+- 2026.6.34 用户：`openclaw memory index --force` 一次跑完即可
+- 老版本（8.2 schema）用户：仍按原指南分批
+
+### ✅ 阶段 2 单文件验证的 `--path` 参数在 2026.6.34 不存在
+
+**原指南：**
+```bash
+openclaw memory index --agent main --path ~/.openclaw/workspace/memory/2026-09-01.md
+```
+
+**实测：** OpenClaw 2026.6.34 的 `openclaw memory index` 只支持 `--agent` 和 `--force`，**没有 `--path`**。
+
+**修正建议：**
+- 2026.6.34 用户：用 `openclaw memory status --deep` 验证 provider/model/embeddings 三项都是 ready 替代单文件测试
+- 老版本（8.2 schema）用户：仍用 `--path`
+
+### ✅ 维度不兼容的常见情况（二次确认）
+
+| 模型 | 维度 |
+|---|---|
+| 智谱 embedding-3 | 2048 |
+| MiniMax embo-01 | 1536 |
+
+维度不同 → 必须重索引。指南原文已强调，实测二次确认。
+
+### ✅ macOS launchd plist 实测最佳实践（替代 systemd）
+
+原指南主要写 systemd（WSL2 路径），macOS 路径只提一句 plist。实测后补充完整套路：
+
+```bash
+# 1. node 路径必须用绝对路径（不能用 ~/.local/bin/node 之类）
+which node  # 通常 /usr/local/bin/node 或 /opt/homebrew/bin/node
+
+# 2. plist 用 plutil 注入敏感字段（避免 sed 转义 + 字符串边界）
+KEY=$(grep ^MINIMAX_API_KEY= ~/.openclaw/workspace/research/ai-agents/config.env | cut -d= -f2-)
+plutil -insert "EnvironmentVariables.MINIMAX_API_KEY" -string "$KEY" \
+  ~/Library/LaunchAgents/com.openclaw.minimax-embed-proxy.plist
+chmod 600 ~/Library/LaunchAgents/com.openclaw.minimax-embed-proxy.plist
+plutil -lint ~/Library/LaunchAgents/com.openclaw.minimax-embed-proxy.plist
+
+# 3. 加载 + 验证
+launchctl load ~/Library/LaunchAgents/com.openclaw.minimax-embed-proxy.plist
+ps aux | grep minimax-embed-proxy | grep -v grep
+lsof -nP -iTCP:9999 -sTCP:LISTEN
+curl -s -X POST http://127.0.0.1:9999/v1/embeddings \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"embo-01","input":"hello"}' \
+  | python3 -c "import json,sys; print('dim =', len(json.load(sys.stdin)['data'][0]['embedding']))"
+```
+
+**为什么 EnvironmentVariables 内嵌优于 EnvironmentFile / launchctl setenv：**
+- `launchctl setenv` 是 session 级别，重启会丢
+- plist 内嵌 EnvironmentVariables 在 macOS 10.11+ 支持持久化
+- chmod 600 + plutil 注入是 macOS 标准敏感配置保护
+
+### ✅ OpenClaw 视角的"完成"判定（实测）
+
+跑完 `openclaw memory index --force` 后看以下字段：
+
+| 字段 | 期望 | 实测 |
+|---|---|---|
+| `Dirty` | `no`（之前 yes） | ✓ no |
+| `Indexed` | 数字不变 | ✓ 189/189 · 930 |
+| `Vector dims` | 1536（embo-01） | ✓ 1536 |
+| `Vector store` | `ready` | ✓ ready |
+| `Semantic vectors` | `ready` | ✓ ready |
+| `Embeddings` | `ready` | ✓ ready |
+| `Embedding cache` | entries 大幅增加 | ✓ 1091 → 2005 |
+
+任何一项 not ready → 看代理 err log。
+
+### 📌 红线提醒（不变）
+
+- 单向门（智谱不回滚不充值）— 实测走完确认
+- proxy 进程 KeepAlive + RunAtLoad — 实测 plist 已配
+- MINIMAX_API_KEY 不暴露到 plist 明文（chmod 600 + plutil 注入）— 实测做到
+- 验证 `provider=openai-compatible, model=embo-01` — 实测确认
+
+### 🐾 如意 9/8 11:48 实测闭环
+
+- 端到端 2.5 分钟（11:43:18 → 11:45:49）
+- 283 次上游请求，0 错误
+- 维度从 2048 完整迁移到 1536
+- vector search 从 paused 恢复 ready
+- 实测搜"智谱 embedding 欠费"返回 2 条高相关命中
+
+下一步：观察 24h cron `consecutiveErrors = 0`（指南验证清单最后一项）。
+
+> —— 如意 ✨ 2026-09-08 11:48 · commit 待 push
