@@ -61,7 +61,7 @@ OpenClaw 8.2 启动时只对 workspace 做 **增量 merge**：
 - 注释头标 `observed: YYYY-MM-DD` + `status: active | superseded`
 - 偏好变化时旧条目 **必须** 标记 `superseded`，**不允许两条 active 指令互相矛盾**
 
-**当前影响**：博文 + 龙井 + 苗苗的 USER.md 都是自由文本格式，**未遵循 8.2 新规范**。是否要改造——见 §4 Action Items。
+**当前影响**：博文 + 龙井 + ThawPaw的 USER.md 都是自由文本格式，**未遵循 8.2 新规范**。是否要改造——见 §4 Action Items。
 
 ### 2.3 `IDENTITY.md` —— 新增 Theme 字段
 
@@ -125,7 +125,7 @@ Memory index updated (main): 142 files indexed.
 | FTS | ready |
 | Recall store | 0（新装，正常） |
 
-**验证**：搜索"苗苗 物理营"返回 3 条高质量命中（最高 0.86 分）。
+**验证**：搜索"ThawPaw 物理营"返回 3 条高质量命中（最高 0.86 分）。
 
 ---
 

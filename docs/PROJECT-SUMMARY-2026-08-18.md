@@ -18,7 +18,7 @@ SkyClan 家族的 OpenClaw 分身分散在不同平台：IcePaw / 如意在 macO
 - 如意产出 PRD v1.0；IcePaw 完成 Phase 0 安全审计（thawpaw-games 公开 repo 无密钥泄露）+ 9 条修改建议（P0：IcePaw 平台 Win→macOS 修正等）。
 - **分工拍板**：IcePaw 负责后端 + 部署 + 运维（持有 CF OAuth 部署权）；如意 + 筋斗云负责客户端开发；代码 push 到 GitHub review，部署统一由 IcePaw 执行。
 - **架构拍板**：不新建 Worker / KV / 域名——扩展现有 `tpg-hq` Worker，复用 KV 加 `chatroom:` prefix，repo 保持 public。
-- 考试窗口约定：7/1–7/14 低噪声，7/15 苗苗考完后冲刺。
+- 考试窗口约定：7/1–7/14 低噪声，7/15 ThawPaw考完后冲刺。
 
 ### 2026-07-02：平台澄清
 - 群内确认平台矩阵：IcePaw/如意 = macOS，小马 = WSL2-Ubuntu；客户端开发优先保证小马那端可用。

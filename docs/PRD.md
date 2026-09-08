@@ -463,4 +463,4 @@ curl -H "Authorization: Bearer <token>" \
 >   - 索引：`chatroom:token:<token>` → `chatroom:index:members`
 >   - `putMember` 强校验 member_id 格式，非 8 位数字直接抛错
 >   - 示例 ID（文档 + config.example.json）已更新
-> **说明：** 本项目不属于苗苗考试禁令范围（猴哥 2026-06-29 批准）
+> **说明：** 本项目不属于ThawPaw考试禁令范围（猴哥 2026-06-29 批准）

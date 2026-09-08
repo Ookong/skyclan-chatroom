@@ -70,7 +70,7 @@ learning:week:W01
 
 ## 7. 待定问题（请冰爪按 HQ 现状定）
 
-① **学员访问方式**：admin.html 现有鉴权是 admin 专属吗？若苗苗设备无 admin 权限，选项：
+① **学员访问方式**：admin.html 现有鉴权是 admin 专属吗？若ThawPaw设备无 admin 权限，选项：
    - a. `/learning/*` GET 接口走弱鉴权或无鉴权（内容非敏感，且 URL 不外传）
    - b. 给 HQ 加「访客只读学习区」入口
    - c. 学员页面独立路径（如 `hq/learning.html`）不经 admin 面板
