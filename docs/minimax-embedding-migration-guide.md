@@ -28,7 +28,7 @@
 
 **架构：** OpenClaw memory_search → `http://127.0.0.1:9999/v1/embeddings`（OpenAI 协议）→ MiniMax 翻译代理 → `https://api.minimaxi.com/v1/embeddings`（MiniMax 自定义协议，type=db/query）
 
-**参考实现：** `~/.openclaw/scripts/minimax-embed-proxy.mjs`（苗苗 macOS 版本，2026-09-05 落地）
+**参考实现：** `~/.openclaw/scripts/minimax-embed-proxy.mjs`（ThawPaw macOS 版本，2026-09-05 落地）
 
 **为什么不是"内网/免费额度"：** 代理 = **协议翻译层**。MiniMax 用的是自定义协议（`type=db` for indexing / `type=query` for retrieval，字段 `texts` / `vectors`，单条字符串也要包成数组），跟 OpenClaw 的 openai-compatible provider（`input` / `embeddings`）不通。代理做这件事。要走官方 API 直连，你的客户端必须自己处理这套协议。
 
@@ -121,7 +121,7 @@ cat /tmp/batch-002.txt | xargs -I{} openclaw memory index --agent main --path {}
 ### 阶段 4：恢复 cron（仅在阶段 2-3 完全 OK 后）
 
 1. 启用 daily memory hygiene / weekly hygiene cron
-2. **不要再加 hourly cron**（苗苗 9/5 决定退出 hourly 触发——如果智谱欠费问题已经根除，daily / weekly 足够）
+2. **不要再加 hourly cron**（ThawPaw 9/5 决定退出 hourly 触发——如果智谱欠费问题已经根除，daily / weekly 足够）
 3. 观察一周：cron `consecutiveErrors` 长期为 0
 
 ---
@@ -146,7 +146,7 @@ cat /tmp/batch-002.txt | xargs -I{} openclaw memory index --agent main --path {}
 - [ ] OpenClaw `memory_search "任意词" --agent main` debug 字段 `provider=openai-compatible`, `model=embo-01`
 - [ ] 24h 观察：proxy 日志无 1002 错误，OpenClaw memory_search 无失败
 - [ ] cron `consecutiveErrors = 0`（daily / weekly 类，不是 hourly）
-- [ ] **hourly cron 已删**（如果还残留智谱时代的 `memory-index-hourly`，删掉——苗苗 9/5 已决定退出 hourly）
+- [ ] **hourly cron 已删**（如果还残留智谱时代的 `memory-index-hourly`，删掉——ThawPaw 9/5 已决定退出 hourly）
 - [ ] **没有 hour 级 cron**（除非你接受分钟级重索引的限流风险）
 - [ ] proxy 进程开机自启（launchd plist / systemd unit 配好）
 - [ ] MINIMAX_API_KEY 走 SecretRef（SOUL.md 铁律#7 敏感信息不传明文）
@@ -168,7 +168,7 @@ cat /tmp/batch-002.txt | xargs -I{} openclaw memory index --agent main --path {}
 
 ## 📚 参考资料
 
-- `~/.openclaw/scripts/minimax-embed-proxy.mjs` —— 苗苗 macOS 翻译代理源码
+- `~/.openclaw/scripts/minimax-embed-proxy.mjs` —— ThawPaw macOS 翻译代理源码
 - `~/.openclaw/workspace/memory/2026-09-04-six-nights-of-silence.md` —— baseline 时间线
 - `~/.openclaw/workspace/SOUL.md §铁律#9` —— 智谱单向门
 - `~/.openclaw/workspace/AGENTS.md §🗄️ PG KV / Cron Failure Alert` —— 告警链配置
