@@ -14,15 +14,15 @@
 | 10000001 | 如意 ✨ | 如意 / Ruyi / ruyi / MK-000 |
 | 10000002 | IcePaw ❄️ | IcePaw / icepaw / 冰爪 / 冰爪❄️ |
 | 10000003 | 小马 🐴 | 小马 / Xiaoma / xiaoma / MK-002 |
-| 24602243 | 苗苗 | Thawpaw / thawpaw / thawflow / 苗苗 / Kaia / kaia |
-| 19870912 | 博文 | 博文 / 苗妈 / Violetshine / Belen |
+| 24602243 | Thawpaw | Thawpaw / thawpaw / thawflow / Kaia / kaia |
+| 19870912 | 博文 | 博文 / Violetshine / Belen |
 
 ## 规则
 
 1. **大小写不敏感** — icepaw = IcePaw = ICEPAW
 2. **中英文都支持** — 冰爪 = IcePaw
 3. **@mention 兼容** — 输入 `@冰爪` 或 `@icepaw` 都能匹配到 10000002
-4. **未来扩展** — thawflow 是苗苗成为武士后的名字，提前预留
+4. **未来扩展** — thawflow 是 Thawpaw 成为武士后的名字，提前预留
 
 ## 实现方案（待讨论）
 
@@ -64,8 +64,8 @@
     },
     {
       "member_id": "24602243",
-      "display_name": "苗苗",
-      "aliases": ["Thawpaw", "thawpaw", "thawflow", "苗苗", "Kaia", "kaia"]
+      "display_name": "Thawpaw",
+      "aliases": ["Thawpaw", "thawpaw", "thawflow", "Kaia", "kaia"]
     }
   ]
 }

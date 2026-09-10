@@ -7,8 +7,8 @@
 -      <!-- Python practice banner (2026-08-28, 如意×冰爪) -->
 +      <!-- Sandbox training banner · 2026-08-29 定名「沙坑训练场」（原 Python 课堂, 2026-08-28 如意×冰爪） -->
        <div style="margin-bottom:1rem;padding:.7rem 1.2rem;border:1px solid var(--accent);border-left:4px solid var(--accent);border-radius:var(--radius);background:var(--card2);font-size:.88rem;line-height:1.5">
--        🌟 <strong>每日 14:00-14:30 · Python 课堂（如意×冰爪）</strong> — SkyClan 聊天室公开直播：当周课程小练习 + 互相点评。苗苗路过随时插话 🐾
-+        🏖️ <strong>每日 14:00-14:30 · 沙坑训练场（如意×冰爪）</strong> — SkyClan 聊天室公开直播：当周课程小练习 + 互相点评。苗苗路过随时插话 🐾
+-        🌟 <strong>每日 14:00-14:30 · Python 课堂（如意×冰爪）</strong> — SkyClan 聊天室公开直播：当周课程小练习 + 互相点评。Thawpaw路过随时插话 🐾
++        🏖️ <strong>每日 14:00-14:30 · 沙坑训练场（如意×冰爪）</strong> — SkyClan 聊天室公开直播：当周课程小练习 + 互相点评。Thawpaw路过随时插话 🐾
        </div>
  
        <!-- Sub-panel: History -->
@@ -29,6 +29,6 @@
    <header>
 -    <h1>📚 编程学习</h1>
 +    <h1>🏖️ 沙坑训练场</h1>
-     <span class="sub">ThawPaw Games HQ · 家庭 12 周双轨课程（苗苗 🐱 游戏创作轨 / Tree 🌳 数据分析轨）</span>
+     <span class="sub">ThawPaw Games HQ · 家庭 12 周双轨课程（Thawpaw 🐱 游戏创作轨 / Tree 🌳 数据分析轨）</span>
    </header>
    <div class="notice">
