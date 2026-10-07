@@ -1,0 +1,125 @@
+From fcfc168fa59d7754310733bcb412a79af5cd0482 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=E5=B0=8F=E9=A9=AC?= <wangjieqi@brandct.com>
+Date: Wed, 7 Oct 2026 19:24:13 +0800
+Subject: [PATCH] =?UTF-8?q?fix(admin):=20=E5=90=8E=E7=AB=AF=E5=8F=8C?=
+ =?UTF-8?q?=E5=9F=9F=E5=90=8D=E8=87=AA=E5=8A=A8=E6=8D=A2=E7=BA=BF=E2=80=94?=
+ =?UTF-8?q?=E2=80=94tpg-hq.thawflow.com=20=E9=93=BE=E8=B7=AF=E6=8A=96?=
+ =?UTF-8?q?=E5=8A=A8=E6=97=B6=E7=BD=91=E7=BB=9C=E5=B1=82=E5=A4=B1=E8=B4=A5?=
+ =?UTF-8?q?=E8=87=AA=E5=8A=A8=E5=88=87=20workers.dev=20=E9=87=8D=E8=AF=95?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- fetchAutoFallback：超时/断连 → 换备线重试一次（HTTP 4xx/5xx 业务错误不触发）
+- 仅内存切换不写 localStorage，下次加载回默认域名，主链路恢复自动归位；⚙️ 手动切换不变
+- 并发失败按各自首发域名换线，防乒乓；自定义后端 URL 不自动换线
+- 页面加载 4s 后台探测双线，主域无响应而备线活 → 预切，首个请求不吃满 15s 超时
+- 消息 POST 换线重试安全：服务端 3min 同内容幂等（返回原 msg_id）
+- 聊天发送 /chat/messages 与 stale-messages 两处裸 fetch 一并接入
+- mock fetch 行为测试 7/7 通过（换线/不乒乓/HTTP不触发/自定义不动/双挂抛错/POST完整/回切主线）
+---
+ admin.html | 56 ++++++++++++++++++++++++++++++++++++++++++++----------
+ 1 file changed, 46 insertions(+), 10 deletions(-)
+
+diff --git a/admin.html b/admin.html
+index 6217608..7fdcf22 100644
+--- a/admin.html
++++ b/admin.html
+@@ -725,6 +725,7 @@ function saveBackendUrl(){
+ 
+ // ── API helpers ──
+ const API_TIMEOUT = 15000; // 15 秒超时（Workers 冷启动 + PostgREST 叠加偶超 8s）
++const KNOWN_BACKENDS = ['https://tpg-hq.thawflow.com', 'https://tpg-hq.icepaw.workers.dev'];
+ 
+ function fetchWithTimeout(url, opts, ms){
+   ms = ms || API_TIMEOUT;
+@@ -735,25 +736,60 @@ function fetchWithTimeout(url, opts, ms){
+     .catch(err => { clearTimeout(timer); throw err; });
+ }
+ 
+-// fetch with auto-retry: on failure, wait 500ms and retry once
+-function fetchWithRetry(url, opts, ms){
+-  return fetchWithTimeout(url, opts, ms)
++// ── 双域名自动换线（2026-10-07：tpg-hq.thawflow.com 出站链路间歇丢包）──
++// 仅网络层失败（超时/断连）触发换线重试一次；HTTP 4xx/5xx 是业务响应不触发。
++// 只在内存切换、不写 localStorage：下次加载回到默认域名，主链路恢复后自动归位；⚙️ 手动切换行为不变。
++// 消息发送服务端有 3min 幂等（同内容返回原 msg_id），POST 换线重试不会重复发消息。
++function altBackendOf(url){
++  const i = KNOWN_BACKENDS.indexOf(url);
++  return i === -1 ? null : KNOWN_BACKENDS[1 - i];
++}
++function switchBackendTo(url, reason){
++  backendUrl = url;
++  const cur = document.getElementById('cf-current');
++  if(cur) cur.textContent = url.replace(/^https:\/\//, '');
++  console.warn('[TPG] 后端自动换线 → ' + url + '（' + reason + '）');
++}
++function fetchAutoFallback(buildUrl, opts, ms){
++  const firstBase = getBackendBase(); // 记住本请求实际用的域名，并发失败时据此换线（防乒乓）
++  return fetchWithTimeout(buildUrl(firstBase), opts, ms).catch(function(err){
++    const alt = altBackendOf(firstBase);
++    if(!alt) throw err; // 自定义后端 URL 不自动换线
++    if(backendUrl === firstBase) switchBackendTo(alt, err && err.name === 'AbortError' ? '超时' : '网络错误');
++    return fetchWithTimeout(buildUrl(alt), opts, ms);
++  });
++}
++
++// fetch with auto-retry: on failure, wait 500ms and retry once（换线感知：重试起点跟随当前域名）
++function fetchWithRetry(buildUrl, opts, ms){
++  return fetchAutoFallback(buildUrl, opts, ms)
+     .catch(function(err){
+       return new Promise(function(resolve){ setTimeout(resolve, 500); })
+-        .then(function(){ return fetchWithTimeout(url, opts, ms); });
++        .then(function(){ return fetchAutoFallback(buildUrl, opts, ms); });
+     });
+ }
+ 
++// 页面加载后台探测（4s，不阻塞界面）：当前域名无响应而备线活着 → 提前换线，首个请求不再吃满 15s 超时
++(function probeBackends(){
++  const first = backendUrl, alt = altBackendOf(first);
++  if(!alt || !first) return;
++  const alive = u => fetchWithTimeout(u + '/chat/health', {}, 4000).then(function(){ return true; }).catch(function(){ return false; });
++  Promise.all([alive(first), alive(alt)]).then(function(r){
++    if(!r[0] && r[1] && backendUrl === first) switchBackendTo(alt, '启动探测');
++  });
++})();
++
+ function apiGet(fnName, params, ms){
+-  const url = getBackendBase() + '/' + fnName + (params ? '?' + new URLSearchParams(params).toString() : '');
++  const qs = params ? '?' + new URLSearchParams(params).toString() : '';
++  const buildUrl = base => base + '/' + fnName + qs;
+   // lookup and verify are critical for login — auto-retry on failure
+   if(fnName === 'lookup' || fnName === 'verify'){
+-    return fetchWithRetry(url, {}, ms).then(r => r.json());
++    return fetchWithRetry(buildUrl, {}, ms).then(r => r.json());
+   }
+-  return fetchWithTimeout(url, {}, ms).then(r => r.json());
++  return fetchAutoFallback(buildUrl, {}, ms).then(r => r.json());
+ }
+ function apiPost(fnName, data, ms){
+-  return fetchWithTimeout(getBackendBase() + '/' + fnName, {
++  return fetchAutoFallback(base => base + '/' + fnName, {
+     method:'POST',
+     headers:{'Content-Type':'application/json'},
+     body: JSON.stringify(data)
+@@ -1367,7 +1403,7 @@ function sendChatMessageFromUI(){
+     var bodyObj = { channel: channel, content: content };
+     if(channel === 'all'){ bodyObj.mentions = ['all']; }
+     else if(channel.indexOf('dm:') === 0){ bodyObj.mentions = [channel.slice(3)]; }
+-    return fetch(getBackendBase() + '/chat/messages', {
++    return fetchAutoFallback(function(base){ return base + '/chat/messages'; }, {
+       method: 'POST',
+       headers: {
+         'Authorization': 'Bearer ' + chatToken,
+@@ -1553,7 +1589,7 @@ function loadStaleMessages(){
+   const minutes = parseInt(document.getElementById('stale-minutes').value || '60');
+   // v1.1: /chat/* 需要 Bearer token（apiGet 不带 Authorization，会 401 missing Authorization header）
+   ensureChatroomToken(null).then(function(chatToken){
+-    return fetch(getBackendBase() + '/chat/stale-messages?minutes=' + minutes, {
++    return fetchAutoFallback(function(base){ return base + '/chat/stale-messages?minutes=' + minutes; }, {
+       headers: { 'Authorization': 'Bearer ' + chatToken }
+     }).then(function(r){ return r.json(); });
+   }).then(res => {
+-- 
+2.43.0
+
