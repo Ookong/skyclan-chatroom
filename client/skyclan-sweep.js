@@ -110,7 +110,7 @@ async function fetch(url, options = {}) {
 function mentionsMe(m, myId) {
   const men = m.mentions || [];
   if (men.includes(myId)) return true;
-  if (/(^|[^\w@])@10000004\b/.test(m.content || '')) return true; // mentions 里没解析出数字 ID 时兜底
+  if (new RegExp('(^|[^\\w@])@' + myId + '\\b').test(m.content || '')) return true; // mentions 里没解析出数字 ID 时兜底（动态 ID；修 2026-10-13 硬编码 10000004 导致的误报）
   return false;
 }
 
